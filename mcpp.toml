@@ -25,6 +25,16 @@ provides = ["hosted-standard-library"]
 # knows nothing about, and its configuration is in llvm-generated/ rather than
 # beside the compiler.
 std-module = "llvm-generated/std.cppm"
+# ⚠️ AND THE COMPAT MODULE, BECAUSE IT IS THE SAME LIBRARY.
+#
+# `std.compat` re-exports the C library's names into the global namespace over
+# the SAME libc++. Naming only the first leaves the second resolving to the
+# toolchain's copy, and the two are then a mixed pair — which does not fail
+# where they are chosen but inside the toolchain's headers, against a
+# configuration never generated for this target:
+#
+#   …/share/libc++/v1/std.compat.cppm → __config:13 '__config_site' not found
+std-compat-module = "llvm-generated/std.compat.cppm"
 std-module-flags = [
   # ⚠️ --no-default-config, and it is not tidiness.
   #
@@ -106,6 +116,13 @@ sources = [
 # build if it reaches a <ctype.h> that is not its own. The generated
 # configuration precedes both, because every header of the library includes it.
 include_dirs = [
+  # ⭐ THE OVERLAY, FIRST. Every difference from vendored libc++ lives in one
+  # directory that shadows it, exactly as openkal-musl's `port/` shadows
+  # vendored musl — so the vendored tree stays byte-identical to upstream and
+  # `git diff` against a fresh checkout of it is empty. port/include's own
+  # headers say what each one is for and why it could not be a `__config_site`
+  # switch instead.
+  "port/include",
   "llvm/libcxx/include",
   "llvm/libcxx/src",
   "llvm/libcxxabi/include",
