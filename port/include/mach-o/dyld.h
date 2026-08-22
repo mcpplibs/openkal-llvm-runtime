@@ -35,6 +35,21 @@ static inline const struct mach_header* _dyld_get_image_header(uint32_t) { retur
 static inline intptr_t _dyld_get_image_vmaddr_slide(uint32_t) { return 0; }
 static inline const char* _dyld_get_image_name(uint32_t) { return 0; }
 
+// ⚠️ AND THE UNLOAD HOOK, WHICH IS WHY THIS FILE IS NOT ONLY ENQUIRIES.
+//
+// libunwind's frame-description cache registers a callback so that entries can
+// be dropped when an image is unloaded. Nothing is ever unloaded here — there
+// is one image and no loader to unload it — so registering is complete when it
+// does nothing, and the callback would never be called even if it were kept.
+//
+// ⭐ Stubbing it here rather than shadowing UnwindCursor.hpp keeps the whole of
+// this package's difference from upstream in headers upstream does not own.
+// The rule the overlay follows: replace the PLATFORM, never the library.
+static inline void _dyld_register_func_for_remove_image(
+    void (*)(const struct mach_header*, intptr_t)) {}
+static inline void _dyld_register_func_for_add_image(
+    void (*)(const struct mach_header*, intptr_t)) {}
+
 #ifdef __cplusplus
 }
 #endif

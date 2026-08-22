@@ -149,6 +149,97 @@ include_dirs = [
 # So the freestanding configuration states it, and states the two facilities
 # that environment does not have. Nothing else differs: the C library beneath is
 # the same one.
+# ⚠️ THE COMPILER'S OWN RUNTIME, ON EVERY TARGET WHOSE DRIVER SELECTION WE
+# REPLACED — WHICH IS EVERY CROSS, AND NOT THE HOST.
+#
+# `__udivti3` and its relatives are what the compiler decided to call; no source
+# here mentions them. A native link gets them from the toolchain's own
+# `libclang_rt.builtins`, which the driver adds. A cross does not — the target
+# side comes from this graph — so this package has to supply them.
+#
+# ⚠️ AND IT MUST NOT SUPPLY THEM NATIVELY. Measured 2026-08-23: adding them to
+# the package-wide source list broke the HOST build with duplicate definitions
+# of `__muloti4` and its neighbours, against the archive the driver had already
+# linked. The fact is "the driver's runtime selection was replaced", and the
+# nearest thing a manifest can say today is "this target is not the host of this
+# repository's builds" — stated per format rather than once, which is the cost
+# of the manifest not being able to say it directly.
+[target.'cfg(os = "macos")'.build]
+# ⚠️ AND compiler-rt's emutls, WHICH THE EXCLUSION LIST OTHERWISE DROPS.
+#
+# The package-wide exclusions leave `emutls.c` out because it needs an
+# environment — pthread keys and an allocator. This target has both, from
+# openkal-musl, and `-femulated-tls` below makes every thread-local access call
+# into it. Measured: without it, `undefined symbol: __emutls_get_address`.
+#
+# ⭐ EMULATED THREAD-LOCAL STORAGE, WHICH THIS OBJECT FORMAT NEEDS AND openkal
+# ALREADY VALIDATED.
+#
+# Mach-O reaches a `thread_local` through a descriptor the dynamic loader
+# bootstraps — `_tlv_bootstrap`. There is no dynamic loader here, so the symbol
+# is undefined and the program does not link. `-femulated-tls` makes the
+# compiler route every access through `__emutls_get_address` instead, which is
+# an ordinary function call resolved by compiler-rt against a key the C library
+# owns.
+#
+# ⚠️ Measured 2026-08-23: `undefined symbol: _tlv_bootstrap`, after everything
+# else on this target linked. And the mechanism is not new — the ecosystem
+# design's experiment A validated exactly this route (32 assertions, 0
+# failures); ⚠️ that experiment also recorded that the flag is LLVM-only, which
+# is why it can be stated here at all: this target's compiler is clang by
+# construction.
+cxxflags = ["-femulated-tls"]
+cflags   = ["-femulated-tls"]
+# ⚠️ libc++ carries its OWN copy of the 128-bit multiply-overflow helper, for
+# platforms where compiler-rt is not linked. Supplying compiler-rt's makes them
+# a pair: `duplicate symbol: __muloti4`. The freestanding block never hit it
+# because it excludes the whole filesystem directory for a different reason.
+sources = [
+  "!llvm/libcxx/src/filesystem/int128_builtins.cpp",
+  "llvm/compiler-rt/lib/builtins/*.c",
+  "llvm/compiler-rt/lib/builtins/emutls.c",
+  "!llvm/compiler-rt/lib/builtins/atomic*.c",
+  "!llvm/compiler-rt/lib/builtins/clear_cache.c",
+  # ⚠️ `emutls.c` IS NOT EXCLUDED HERE, AND THE ORDER DOES NOT DECIDE THAT —
+  # AN EXCLUSION ANYWHERE IN A LIST BEATS AN INCLUSION ANYWHERE ELSE IN IT.
+  # Measured: adding the include above while leaving the exclusion below it
+  # produced no object and `undefined symbol: __emutls_get_address`. So the
+  # line is simply absent from this target rather than re-added.
+  "!llvm/compiler-rt/lib/builtins/enable_execute_stack.c",
+  "!llvm/compiler-rt/lib/builtins/eprintf.c",
+  "!llvm/compiler-rt/lib/builtins/gcc_personality_v0.c",
+  "!llvm/compiler-rt/lib/builtins/crtbegin.c",
+  "!llvm/compiler-rt/lib/builtins/crtend.c",
+  # ⚠️ Darwin's own: it asks Apple's SDK which OS version is running, so that a
+  # weakly-linked symbol can be probed. openkal is not that OS, and nothing here
+  # weak-links against it. (`apple_versioning.c` is already outside the
+  # architecture's list; this one is inside it and still Darwin's.)
+  "!llvm/compiler-rt/lib/builtins/os_version_check.c",
+  "!llvm/compiler-rt/lib/builtins/*xf*.c",
+  "!llvm/compiler-rt/lib/builtins/*xc3.c",
+]
+
+[target.'cfg(windows)'.build]
+sources = [
+  "!llvm/libcxx/src/filesystem/int128_builtins.cpp",
+  "llvm/compiler-rt/lib/builtins/*.c",
+  "!llvm/compiler-rt/lib/builtins/atomic*.c",
+  "!llvm/compiler-rt/lib/builtins/clear_cache.c",
+  "!llvm/compiler-rt/lib/builtins/emutls.c",
+  "!llvm/compiler-rt/lib/builtins/enable_execute_stack.c",
+  "!llvm/compiler-rt/lib/builtins/eprintf.c",
+  "!llvm/compiler-rt/lib/builtins/gcc_personality_v0.c",
+  "!llvm/compiler-rt/lib/builtins/crtbegin.c",
+  "!llvm/compiler-rt/lib/builtins/crtend.c",
+  # ⚠️ Darwin's own: it asks Apple's SDK which OS version is running, so that a
+  # weakly-linked symbol can be probed. openkal is not that OS, and nothing here
+  # weak-links against it. (`apple_versioning.c` is already outside the
+  # architecture's list; this one is inside it and still Darwin's.)
+  "!llvm/compiler-rt/lib/builtins/os_version_check.c",
+  "!llvm/compiler-rt/lib/builtins/*xf*.c",
+  "!llvm/compiler-rt/lib/builtins/*xc3.c",
+]
+
 [target.'cfg(not(os = "none"))'.build]
 include_dirs = ["llvm-generated/generic"]
 
@@ -157,12 +248,9 @@ include_dirs = ["llvm-generated/freestanding"]
 # Two switches that a hosted target answers by recognising the system and this
 # one cannot.
 #
-#   the unwinder's use of dladdr --- there is no dynamic loader here, and the
-#   type its interface names does not exist;
-#   _GNU_SOURCE --- libc++abi reaches `syscall' for a thread identity, and musl
-#   declares that name only under this macro. LLVM's own runtimes build defines
-#   it for the same reason; a hosted build here gets it from elsewhere and the
-#   difference was invisible until this target asked.
+#   (dladdr and _GNU_SOURCE moved to the package-wide list above: both are
+#   facts about openkal rather than about this target, and leaving them here
+#   meant every new object format rediscovered them.)
 #   _LIBUNWIND_IS_BAREMETAL — ⭐ the unwinder finds its tables through symbols
 #   the linker script defines rather than through the program headers. Both
 #   routes exist upstream and this target must take the second: the headers are
@@ -176,8 +264,7 @@ include_dirs = ["llvm-generated/freestanding"]
 #   The symbols are `__eh_frame_start` / `__eh_frame_end` (and the `_hdr_`
 #   pair), and AddressSpace.hpp carries the linker script fragment that defines
 #   them. examples/same-source/link.ld is that fragment.
-cxxflags = ["-D_LIBUNWIND_USE_DLADDR=0", "-D_GNU_SOURCE",
-            "-D_LIBUNWIND_IS_BAREMETAL=1"]
+cxxflags = ["-D_LIBUNWIND_IS_BAREMETAL=1"]
 # ⚠️ THE FLAG BELONGS TO THIS PACKAGE AND LANDS ON THE CONSUMER'S LINK.
 #
 # `_LIBUNWIND_IS_BAREMETAL` above makes the unwinder read `__eh_frame_hdr_start`
@@ -225,9 +312,7 @@ ldflags = ["-Wl,--eh-frame-hdr"]
 #   two halves of an initialisation array that a linker script places here.
 sources = [
   "!llvm/libcxx/src/filesystem/*.cpp",
-
   "llvm/compiler-rt/lib/builtins/*.c",
-
   "!llvm/compiler-rt/lib/builtins/atomic*.c",
   "!llvm/compiler-rt/lib/builtins/clear_cache.c",
   "!llvm/compiler-rt/lib/builtins/emutls.c",
@@ -236,9 +321,14 @@ sources = [
   "!llvm/compiler-rt/lib/builtins/gcc_personality_v0.c",
   "!llvm/compiler-rt/lib/builtins/crtbegin.c",
   "!llvm/compiler-rt/lib/builtins/crtend.c",
-
+  # ⚠️ Darwin's own: it asks Apple's SDK which OS version is running, so that a
+  # weakly-linked symbol can be probed. openkal is not that OS, and nothing here
+  # weak-links against it. (`apple_versioning.c` is already outside the
+  # architecture's list; this one is inside it and still Darwin's.)
+  "!llvm/compiler-rt/lib/builtins/os_version_check.c",
   "!llvm/compiler-rt/lib/builtins/*xf*.c",
   "!llvm/compiler-rt/lib/builtins/*xc3.c",
+
   "!llvm/compiler-rt/lib/builtins/*bf*.c",
 ]
 
@@ -251,6 +341,31 @@ cxxflags = [
   # it takes. The C sources had it and the C++ ones did not, which is the kind of
   # split a single flags list does not have.
   "-D_LIBUNWIND_IS_NATIVE_ONLY",
+  # ⭐ NO `dladdr`, ON ANY TARGET — WHICH IS A FACT ABOUT openkal, NOT ABOUT ONE
+  # PLATFORM.
+  #
+  # libunwind uses it to put a FUNCTION NAME on a frame, which is a convenience
+  # for `_Unwind_FindEnclosingFunction` and for printing a backtrace; nothing in
+  # unwinding needs it. It reaches for it whenever the platform "has a dynamic
+  # loader", and decides that by the OS.
+  #
+  # openkal has no dynamic loader on any target: a program built this way is one
+  # image. So the answer is the same everywhere, and it is stated once here
+  # rather than per target — which is what stops the next object format from
+  # rediscovering it. ⚠️ It was in the `cfg(os = "none")` block before, and the
+  # macOS target then failed on `unknown type name 'Dl_info'` — the same fact,
+  # asked again, at a place that had not been told.
+  "-D_LIBUNWIND_USE_DLADDR=0",
+  # ⭐ musl's non-standard names live behind this, and they are not optional for
+  # libc++: the locale backend calls `vasprintf`, `strtof_l`, `strtod_l`,
+  # `strtold_l`, and libc++abi's guard reaches `syscall`. All of them are musl's
+  # to declare, and musl declares them here.
+  #
+  # ⚠️ It was in the `cfg(os = "none")` block, where it happened to be needed
+  # first. Measured on the macOS cross: `no member named 'strtof_l' in the
+  # global namespace`, from a header the freestanding block never applied to.
+  # The fact is about the C LIBRARY, so it is stated once for the package.
+  "-D_GNU_SOURCE",
   "-D_LIBCXXABI_BUILDING_LIBRARY",
   "-D_LIBCPP_DISABLE_VISIBILITY_ANNOTATIONS",
   "-D_LIBCXXABI_DISABLE_VISIBILITY_ANNOTATIONS",
