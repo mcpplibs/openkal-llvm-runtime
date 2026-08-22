@@ -25,7 +25,9 @@ jobs:
   runtime:
     name: build the runtime and run what stands above it (${{ matrix.toolchain }})
     runs-on: ubuntu-24.04
-    timeout-minutes: 60
+    # ⚠️ Raised for the self-build step below, which is temporary. See the note
+    # there: when mcpp#486 ships, that step goes and so does this.
+    timeout-minutes: 90
     strategy:
       fail-fast: false
       matrix:
@@ -149,7 +151,12 @@ jobs:
           # pin selects the tool that BUILDS mcpp, and what is under test is the
           # mcpp that comes out.
           printf '{\n  "workspace": {\n    "mcpp": "%s"\n  }\n}\n' "$MCPP_VERSION" > .xlings.json
-          mcpp build --release
+          # ⚠️ `--dev` AND NOT `--release`. What is under test is a set of
+          # decisions the tool makes about compile flags; an optimisation level
+          # changes none of them. Measured: the release self-build took over
+          # half an hour of a sixty-minute job on a two-core runner, which is
+          # most of the budget spent on something the test does not observe.
+          mcpp build --dev
           BUILT=$(find target -type f -name mcpp -perm -u+x | head -1)
           [ -n "$BUILT" ] || { echo "::error::mcpp did not build"; exit 1; }
           echo "$(cd "$(dirname "$BUILT")" && pwd)" >> "$GITHUB_PATH"
