@@ -1,0 +1,7 @@
+{
+  "index_repos": [
+  ],
+  "deps": ["xim:picolibc-riscv@1.8.12"],
+  "lang": "en",
+  "mirror": "auto"
+}

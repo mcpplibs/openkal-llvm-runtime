@@ -53,6 +53,39 @@ With it at `1`, none. The second follows from openkal reporting `ENOSYS` for
 entropy: `std::random_device` is not built, and a program that names it is told
 by the linker.
 
+## Two configurations, and why there are two
+
+`llvm-generated/` carries one directory per configuration, which is the shape
+`musl-generated/` already has and for the same reason: these are configure
+products, and a package with no configure step commits them.
+
+| | `generic` | `freestanding` |
+| --- | --- | --- |
+| threads | libc++ recognises the system and finds pthread itself | stated, because an unrecognised system makes libc++ stop with `No thread API` rather than guess |
+| filesystem | yes | no — and the sources that implement it are then not compiled, which is what libc++'s own build does with the same switch |
+| terminal | yes | no |
+
+A target with no operating system also needs two switches a hosted one answers
+by recognising the system: the unwinder's use of `dladdr` (there is no dynamic
+loader, and the type its interface names does not exist), and `_GNU_SOURCE`
+(libc++abi reaches `syscall` for a thread identity, and musl declares that name
+only under it — LLVM's own runtimes build defines it for the same reason).
+
+**Measured 2026-08-22**: `mcpp build --target riscv64-none-elf` produces 1431
+objects, `ELF 64-bit LSB relocatable, UCB RISC-V`, with `__cxa_throw` and
+`__cxa_begin_catch` defined.
+
+⚠️ `import std;` on such a target is still refused, and not by this package:
+
+```
+error: `import std;` is not available on 'riscv64-none-elf'
+       --- a freestanding target has no hosted standard library.
+```
+
+That message states a premise this package makes false. Lifting it is a change
+to the build tool, which asks whether the *target* is freestanding rather than
+whether a hosted standard library is *present*.
+
 ## What a program gets
 
 `examples/cxx` asserts it, and every assertion is written so that it can fail:

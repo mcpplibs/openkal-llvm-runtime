@@ -64,7 +64,6 @@ sources = [
 # build if it reaches a <ctype.h> that is not its own. The generated
 # configuration precedes both, because every header of the library includes it.
 include_dirs = [
-  "llvm-generated/generic",
   "llvm/libcxx/include",
   "llvm/libcxx/src",
   "llvm/libcxxabi/include",
@@ -81,6 +80,37 @@ include_dirs = [
   "llvm/libc",
 ]
 
+# ⚠️ THE CONFIGURATION IS PER TARGET, AND THAT IS WHAT `llvm-generated' IS FOR.
+#
+# A hosted target lets libc++ work out for itself that the thread API is
+# pthread's, because it recognises the system. A target with no operating system
+# is not recognised, and libc++ stops with `No thread API' rather than guessing
+# --- correctly, because guessing is what a configure step exists to avoid.
+#
+# So the freestanding configuration states it, and states the two facilities
+# that environment does not have. Nothing else differs: the C library beneath is
+# the same one.
+[target.'cfg(not(os = "none"))'.build]
+include_dirs = ["llvm-generated/generic"]
+
+[target.'cfg(os = "none")'.build]
+include_dirs = ["llvm-generated/freestanding"]
+# Two switches that a hosted target answers by recognising the system and this
+# one cannot.
+#
+#   the unwinder's use of dladdr --- there is no dynamic loader here, and the
+#   type its interface names does not exist;
+#   _GNU_SOURCE --- libc++abi reaches `syscall' for a thread identity, and musl
+#   declares that name only under this macro. LLVM's own runtimes build defines
+#   it for the same reason; a hosted build here gets it from elsewhere and the
+#   difference was invisible until this target asked.
+cxxflags = ["-D_LIBUNWIND_USE_DLADDR=0", "-D_GNU_SOURCE"]
+# The configuration turns filesystem off, so the sources that implement it must
+# not be compiled --- the same rule as random.cpp above, and the same one libc++'s
+# own build applies with the same switch.
+sources = ["!llvm/libcxx/src/filesystem/*.cpp"]
+
+[build]
 cxxflags = [
   "-nostdinc++",
   "-D_LIBCPP_BUILDING_LIBRARY",
@@ -98,8 +128,15 @@ cxxflags = [
   "-D_LIBCXXABI_USE_LLVM_UNWINDER=1",
   "-DLIBCXXABI_USE_LLVM_UNWINDER=1",
   "-DNDEBUG",
-  # libc++abi implements exceptions; it cannot be compiled without them.
+  # libc++abi IMPLEMENTS exceptions and run-time type information; it cannot be
+  # compiled without them, and a freestanding target turns both off for the whole
+  # graph (mcpp docs/13 records why: a BMI carries the setting, so a dependency
+  # compiled with exceptions cannot be imported by a unit without them). The
+  # target's flags precede a package's, so stating both here is what restores
+  # them --- for this package, which is the one that supplies them, and for
+  # nothing else.
   "-fexceptions",
+  "-frtti",
   "-funwind-tables",
   "-w",
   # As with the C library beneath: a program links what it reaches and nothing
