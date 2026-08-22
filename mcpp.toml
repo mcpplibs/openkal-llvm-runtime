@@ -291,6 +291,24 @@ sources = [
   # block found the same wall at `_tlv_bootstrap`, which is why this line is a
   # copy of that one rather than a new idea.
   "llvm/compiler-rt/lib/builtins/emutls.c",
+  # ⭐ THE STACK PROBE, AND IT IS `.S` RATHER THAN `.c` — WHICH IS WHY THE GLOB
+  # ABOVE MISSES IT.
+  #
+  # The compiler emits a call to `___chkstk_ms` before a frame large enough to
+  # skip a guard page, and on this format that is a routine of the compiler's
+  # runtime rather than of the C library. compiler-rt has it, in the
+  # architecture's own directory: `x86_64/chkstk.S`.
+  #
+  # ⚠️ Measured 2026-08-22, after `-lgcc` came off `openkal-musl`'s link line for
+  # this format — that archive is GCC's, and it had been quietly supplying this
+  # to a link whose compiler is clang:
+  #
+  #     ld.lld: error: undefined symbol: ___chkstk_ms
+  #
+  # ⚠️ ONE FILE FROM THAT DIRECTORY AND NOT THE DIRECTORY. `x86_64/` also holds
+  # `floatdidf.c` and its neighbours, which the generic list above already
+  # supplies; taking the whole directory would define each of them twice.
+  "llvm/compiler-rt/lib/builtins/x86_64/chkstk.S",
   "!llvm/compiler-rt/lib/builtins/atomic*.c",
   "!llvm/compiler-rt/lib/builtins/clear_cache.c",
   # ⚠️ AND THE EXCLUSION IS DELETED RATHER THAN LEFT BELOW THE INCLUSION — an
