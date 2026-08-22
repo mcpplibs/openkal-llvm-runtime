@@ -17,6 +17,38 @@ repo        = "https://github.com/mcpplibs/openkal-llvm-runtime"
 # declared here and read there.
 provides = ["hosted-standard-library"]
 
+# Where this package's `std' module source is, and what it needs.
+#
+# The build tool otherwise asks the compiler (`-print-library-module-manifest-path'),
+# which is the right question when the standard library is the compiler's own
+# and the wrong one here: this source was configured for a target the compiler
+# knows nothing about, and its configuration is in llvm-generated/ rather than
+# beside the compiler.
+std-module = "llvm-generated/std.cppm"
+std-module-flags = [
+  # ⚠️ --no-default-config, and it is not tidiness.
+  #
+  # The toolchain payload ships a clang++.cfg that names a host C library's
+  # headers unconditionally. For an ordinary translation unit that is right and
+  # invisible; for this one it puts a C library that is not the one beneath this
+  # package first, and the module fails compiling <wchar.h> with names that
+  # library expects the host compiler to have supplied. Measured.
+  "--no-default-config",
+  "-nostdinc",
+  "-nostdinc++",
+  # libc++'s locale layer reaches for names musl declares only under this macro
+  # (vasprintf, strtof_l and their relatives). LLVM's own runtimes build defines
+  # it for the same reason. It is stated here rather than left to the target
+  # block, because that block describes how this package's own sources are
+  # compiled and the module is compiled separately.
+  "-D_GNU_SOURCE",
+  # The module source is one file that includes ninety-odd fragments by
+  # relative name. They are upstream's and unmodified, so they stay where
+  # upstream put them and the search path names that directory rather than the
+  # fragments being copied next to the configured source.
+  "-I", "llvm/libcxx/modules",
+]
+
 # The C library beneath. A C++ standard library is not portable in the sense a
 # program is: it is configured for one C library and compiled against that
 # library's headers, and the configuration is what this package supplies. The
