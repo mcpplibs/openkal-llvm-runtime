@@ -105,6 +105,38 @@ jobs:
           xlings install xim:qemu-riscv -y
           XLINGS_HOME="$HOME/.mcpp/registry" xlings install xim:qemu-riscv -y
 
+      # ⚠️ THE BUILD TOOL IS BUILT FROM A BRANCH, AND THAT IS TEMPORARY.
+      #
+      # This step needs four decisions that no released mcpp makes yet, each of
+      # which belongs to the tool rather than to this package:
+      #
+      #   `import std` is gated on whether a package PROVIDES a standard
+      #   library for the target rather than on whether the target is
+      #   freestanding; a package may carry its own std module source;
+      #   `-fno-exceptions` / `-fno-rtti` / `-ffreestanding` come off when the
+      #   graph supplies a C++ runtime built for the target; and unwind tables
+      #   go on, because the compiler turns them off for this kind of target
+      #   and a partial set of tables stops the walk rather than degrading it.
+      #
+      # They are on mcpp-community/mcpp#486. Until that is released this job
+      # builds the tool the same way every other dependency here is taken —
+      # from the branch — so the criterion below is actually enforced instead
+      # of being a comment saying it was verified once on a laptop.
+      #
+      # ⇒ When #486 ships, delete this step and raise MCPP_VERSION.
+      - name: The build tool, from the branch that has what this needs
+        if: matrix.toolchain == 'llvm@22.1.8'
+        run: |
+          set -euo pipefail
+          git clone --depth 1 -b feat/import-std-capability \
+            https://github.com/mcpp-community/mcpp "$RUNNER_TEMP/mcpp-src"
+          cd "$RUNNER_TEMP/mcpp-src"
+          mcpp build --release
+          BUILT=$(find target -type f -name mcpp -perm -u+x | head -1)
+          [ -n "$BUILT" ] || { echo "::error::mcpp did not build"; exit 1; }
+          echo "$(cd "$(dirname "$BUILT")" && pwd)" >> "$GITHUB_PATH"
+          "$BUILT" --version
+
       - name: The same program on bare metal, with exceptions
         if: matrix.toolchain == 'llvm@22.1.8'
         run: |
