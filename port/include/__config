@@ -1,0 +1,64 @@
+// libc++'s configuration, plus the one correction openkal has to make to it.
+//
+// ⭐ WHY `__config` AND NOT `__config_site`. `__config_site` is where a build
+// states its answers, and this package generates one — it is how
+// `_LIBCPP_HAS_MUSL_LIBC`, the thread API and the filesystem switch are set.
+// What follows below is not an answer libc++ asks for: it is a conclusion
+// libc++ DRAWS, from `_WIN32`, before any of our answers are consulted.
+//
+//     #if defined(_WIN32)
+//     #  define _LIBCPP_WIN32API
+//     #  define _LIBCPP_MSVCRT_LIKE    // "Both MinGW and native MSVC provide
+//                                      //  a MSVC-like environment"
+//
+// That is true of both environments libc++ has ever been built for on this
+// object format. It is not true of this one: `_WIN32` is a statement about the
+// OBJECT FORMAT and the calling convention, and the C library underneath is
+// musl — the same musl that is underneath on ELF and on Mach-O.
+//
+// ⚠️ Measured 2026-08-23, cross-compiling for `x86_64-windows-gnu` over openkal:
+//
+//     fstream:741:  use of undeclared identifier '_wfopen'
+//     fstream:1004: use of undeclared identifier '_ftelli64'
+//
+// — Microsoft's C runtime, asked of a C library that never claimed to be it.
+//
+// ⇒ So the conclusion is withdrawn where the premise it was drawn from does not
+// hold, and libc++ then takes the paths it already takes on every other format
+// where musl is the C library. Nothing new is written; an existing answer is
+// made reachable.
+//
+// ⚠️ BOTH NAMES, NOT ONE. `_LIBCPP_MSVCRT_LIKE` selects the C runtime and
+// `_LIBCPP_WIN32API` selects the operating-system API — and on this target
+// neither is what is beneath. Withdrawing only the first would leave libc++
+// reaching for `CreateFileW` while calling `fopen`.
+#ifndef OPENKAL_LIBCXX_CONFIG_OVERLAY
+#define OPENKAL_LIBCXX_CONFIG_OVERLAY
+
+#include_next <__config>
+
+#if _LIBCPP_HAS_MUSL_LIBC
+#  ifdef _LIBCPP_MSVCRT_LIKE
+#    undef _LIBCPP_MSVCRT_LIKE
+#  endif
+#  ifdef _LIBCPP_MSVCRT
+#    undef _LIBCPP_MSVCRT
+#  endif
+#  ifdef _LIBCPP_WIN32API
+#    undef _LIBCPP_WIN32API
+#  endif
+// ⚠️ AND THE CONCLUSION DRAWN FROM THE CONCLUSION. `_LIBCPP_HAS_OPEN_WITH_WCHAR`
+// is set to 1 inside the same `_WIN32` block, and it is a `#define` to a VALUE
+// rather than a name to withdraw — so undefining the two above leaves it at 1
+// and `<fstream>` still reaches for `_wfopen`. Measured: withdrawing the first
+// two removed `_ftelli64` and left this one standing.
+//
+// musl opens files by a byte string. A program that wants a wide name converts
+// it, which is what every other target this library is built for already does.
+#  ifdef _LIBCPP_HAS_OPEN_WITH_WCHAR
+#    undef _LIBCPP_HAS_OPEN_WITH_WCHAR
+#  endif
+#  define _LIBCPP_HAS_OPEN_WITH_WCHAR 0
+#endif
+
+#endif  // OPENKAL_LIBCXX_CONFIG_OVERLAY
