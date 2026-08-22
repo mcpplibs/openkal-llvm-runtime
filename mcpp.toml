@@ -325,8 +325,20 @@ sources = [
   # weak-links against it. (`apple_versioning.c` is already outside the
   # architecture's list; this one is inside it and still Darwin's.)
   "!llvm/compiler-rt/lib/builtins/os_version_check.c",
-  "!llvm/compiler-rt/lib/builtins/*xf*.c",
-  "!llvm/compiler-rt/lib/builtins/*xc3.c",
+  # ⚠️ THE TWO EXCLUSIONS THAT WERE HERE WERE COPIED FROM THE macOS BLOCK, AND
+  # THE FACT THEY REST ON IS NOT TRUE OF THIS TARGET.
+  #
+  # `*xf*.c` and `*xc3.c` are the x87 80-bit `long double` routines. On Apple's
+  # arm64 `long double` is `double`, so nothing can call them and building them
+  # is dead weight — which is why that block excludes them. On this target
+  # `long double` IS x87 80-bit, so the calls are real.
+  #
+  # ⚠️ Measured 2026-08-22, after `-lgcc` came off this format's link line:
+  #
+  #     ld.lld: error: undefined symbol: __mulxc3
+  #
+  # — a complex multiply on `long double`, from libc++'s `<complex>`. GCC's
+  # archive had been supplying it, and the exclusion made compiler-rt unable to.
 ]
 
 [target.'cfg(not(os = "none"))'.build]
