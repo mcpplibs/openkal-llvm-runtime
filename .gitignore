@@ -1,0 +1,4 @@
+target/
+compile_commands.json
+mcpp.lock
+.cache/

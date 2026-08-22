@@ -1,0 +1,120 @@
+[package]
+namespace   = "mcpplibs"
+name        = "openkal-llvm-runtime"
+version     = "0.1.0"
+description = "LLVM's C++ runtime libraries — libc++, libc++abi and libunwind — configured for openkal-musl rather than for a host C library."
+license     = "Apache-2.0"
+authors     = ["mcpplibs"]
+repo        = "https://github.com/mcpplibs/openkal-llvm-runtime"
+
+# The C library beneath. A C++ standard library is not portable in the sense a
+# program is: it is configured for one C library and compiled against that
+# library's headers, and the configuration is what this package supplies. The
+# criterion the whole package exists to satisfy is the one openkal keeps
+# returning to --- whether an implementation has been configured FOR this
+# target, not whether its headers can be found.
+[dependencies]
+openkal-musl = { git = "https://github.com/mcpplibs/openkal-musl", branch = "feat/openkal-closure" }
+
+[build]
+cxx_standard = "c++23"
+
+# ⚠️ WHAT IS VENDORED AND WHAT IS NOT.
+#
+# Four subtrees of llvm-project at the revision the toolchain itself was built
+# from (llvm/UPSTREAM-REV). The compiler and the linker are NOT vendored and are
+# not changed: they take a target triple and emit for it, and openkal changes no
+# architecture and no object format. What has to be configured is what travels
+# with the program, and that is these.
+sources = [
+  # The unwinder. Its own sources decide by preprocessor which architecture and
+  # which personality routine to build, so the whole directory is given and the
+  # selection happens inside.
+  "llvm/libunwind/src/libunwind.cpp",
+  "llvm/libunwind/src/Unwind-EHABI.cpp",
+  "llvm/libunwind/src/UnwindLevel1.c",
+  "llvm/libunwind/src/UnwindLevel1-gcc-ext.c",
+  "llvm/libunwind/src/Unwind-sjlj.c",
+  "llvm/libunwind/src/UnwindRegistersRestore.S",
+  "llvm/libunwind/src/UnwindRegistersSave.S",
+
+  # The Itanium C++ ABI: exception objects, the demangler, guard variables,
+  # dynamic casts, and the terminate handler.
+  "llvm/libcxxabi/src/*.cpp",
+  "!llvm/libcxxabi/src/cxa_noexception.cpp",
+
+  # The standard library.
+  "llvm/libcxx/src/*.cpp",
+  # openkal has no source of entropy and this port does not invent one, so the
+  # configuration sets _LIBCPP_HAS_RANDOM_DEVICE to 0 --- and the source that
+  # defines std::random_device must then not be compiled, which is what libc++'s
+  # own build does with the same switch. A program that names random_device is
+  # told by the linker, which is clause 6.1's report.
+  "!llvm/libcxx/src/random.cpp",
+  "llvm/libcxx/src/filesystem/*.cpp",
+  "llvm/libcxx/src/ryu/*.cpp",
+  "llvm/libcxx/src/support/runtime/*.cpp",
+
+  # What openkal supplies that a host C library would have.
+  "port/src/*.cpp",
+]
+
+# The order is load-bearing. libc++'s own headers must precede any C library's,
+# which is a requirement libc++ states in as many words --- <cctype> stops the
+# build if it reaches a <ctype.h> that is not its own. The generated
+# configuration precedes both, because every header of the library includes it.
+include_dirs = [
+  "llvm-generated/generic",
+  "llvm/libcxx/include",
+  "llvm/libcxx/src",
+  "llvm/libcxxabi/include",
+  "llvm/libcxxabi/src",
+  "llvm/libunwind/include",
+  "llvm/libunwind/src",
+  # libc++ reuses llvm-libc's floating-point utilities; the two are one project
+  # and the headers are shared rather than copied.
+  # ⚠️ `llvm/libc' ONLY. Adding `llvm/libc/shared' as well puts llvm-libc's own
+  # <math.h> ahead of the C library's, and llvm-libc's overlay-mode header then
+  # includes itself instead of musl --- so `math_errhandling', which musl
+  # defines unconditionally, is undeclared. The includes are written
+  # "shared/fp_bits.h" relative to libc/, so one directory is what they need.
+  "llvm/libc",
+]
+
+cxxflags = [
+  "-nostdinc++",
+  "-D_LIBCPP_BUILDING_LIBRARY",
+  # libunwind's own C++ sources need it too: without it the unwinder is built to
+  # be able to unwind a foreign address space, and the local one is not the path
+  # it takes. The C sources had it and the C++ ones did not, which is the kind of
+  # split a single flags list does not have.
+  "-D_LIBUNWIND_IS_NATIVE_ONLY",
+  "-D_LIBCXXABI_BUILDING_LIBRARY",
+  "-D_LIBCPP_DISABLE_VISIBILITY_ANNOTATIONS",
+  "-D_LIBCXXABI_DISABLE_VISIBILITY_ANNOTATIONS",
+  "-DLIBCXX_BUILDING_LIBCXXABI",
+  # libc++abi decides which unwinder API it is talking to. Without this it
+  # assumes the GNU one.
+  "-D_LIBCXXABI_USE_LLVM_UNWINDER=1",
+  "-DLIBCXXABI_USE_LLVM_UNWINDER=1",
+  "-DNDEBUG",
+  # libc++abi implements exceptions; it cannot be compiled without them.
+  "-fexceptions",
+  "-funwind-tables",
+  "-w",
+  # As with the C library beneath: a program links what it reaches and nothing
+  # else, which an archive would have given and a set of objects does not.
+  "-ffunction-sections",
+  "-fdata-sections",
+]
+
+cflags = [
+  "-D_LIBUNWIND_IS_NATIVE_ONLY",
+  "-DNDEBUG",
+  "-w",
+  "-ffunction-sections",
+  "-fdata-sections",
+]
+
+[toolchain]
+default = "llvm@22.1.8"

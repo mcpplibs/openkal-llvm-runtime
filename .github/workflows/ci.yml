@@ -1,0 +1,84 @@
+name: CI
+
+# What this workflow asserts.
+#
+# A C++ standard library is not portable in the sense a program is: it is
+# configured for one C library and compiled against that library's headers. The
+# claim here is therefore not "it builds" but "a program above it does the
+# things a C++ program does", and the one that settles it is an exception thrown
+# across frames and caught --- because that is the path a build proves nothing
+# about. Everything else this package could check, a runtime that was linked but
+# never worked would also satisfy.
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_dispatch:
+
+env:
+  MCPP_VERSION: 2026.8.19.4
+  XLINGS_VERSION: v2026.8.17.2
+  XLINGS_NON_INTERACTIVE: '1'
+
+jobs:
+  runtime:
+    name: build the runtime and run what stands above it (${{ matrix.toolchain }})
+    runs-on: ubuntu-24.04
+    timeout-minutes: 60
+    strategy:
+      fail-fast: false
+      matrix:
+        toolchain: ['llvm@22.1.8']
+    defaults:
+      run:
+        shell: bash
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install xlings and mcpp
+        run: |
+          curl -fsSL https://raw.githubusercontent.com/openxlings/xlings/main/tools/other/quick_install.sh \
+            | bash -s "$XLINGS_VERSION"
+          echo "$HOME/.xlings/subos/current/bin" >> "$GITHUB_PATH"
+
+      - name: Install mcpp
+        run: |
+          for attempt in 1 2 3 4 5 6; do
+            xlings update > /dev/null 2>&1 || true
+            if xlings install "mcpp@$MCPP_VERSION" -y -g; then break; fi
+            if [ "$attempt" = 6 ]; then
+              echo "::error::mcpp@$MCPP_VERSION never appeared in the index"; exit 1
+            fi
+            sleep 60
+          done
+          mcpp --version
+          mcpp self config --mirror GLOBAL
+
+      - name: Select the toolchain
+        run: |
+          spec='${{ matrix.toolchain }}'
+          mcpp toolchain install "${spec%@*}" "${spec#*@}"
+          mcpp toolchain default "$spec"
+
+      - name: The runtime builds
+        run: mcpp build
+
+      # ⚠️ THE ONE OBSERVATION A BUILD CANNOT MAKE.
+      #
+      # An unwinder that cannot find the program's frame descriptions compiles,
+      # links, and runs every path that does not throw. Measured while this
+      # package was written: the whole example above printed its first line and
+      # then `libc++abi: terminating due to uncaught exception', with
+      # _Unwind_Backtrace walking zero frames --- and nothing named the cause.
+      # So the throw is the check, and the destructor beside it is what says the
+      # unwind was correct rather than merely non-fatal.
+      - name: A C++ program above it throws across frames and catches
+        run: |
+          cd examples/cxx && mcpp run 2>&1 | tee out.log
+          grep -q -- '-- failures: 0 --' out.log
+
+      - name: import std above it
+        run: |
+          cd examples/import-std && mcpp run 2>&1 | tee out.log
+          grep -q 'import std above openkal: 2 4 7' out.log

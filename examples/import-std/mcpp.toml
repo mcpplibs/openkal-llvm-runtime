@@ -1,0 +1,9 @@
+[package]
+name    = "openkal-import-std"
+version = "0.1.0"
+
+[dependencies]
+openkal-llvm-runtime = { path = "../.." }
+
+[toolchain]
+default = "llvm@22.1.8"
