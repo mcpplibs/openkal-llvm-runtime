@@ -294,3 +294,109 @@ jobs:
           grep -q 'caught: 42'      out.log
           grep -q 'unwound: true'   out.log
           grep -q 'import std over openkal: ok' out.log
+
+  # ---------------------------------------------------------------------------
+  # ⭐⭐ THE HOST DIMENSION — THE HALF OF THE CLAIM THE JOBS ABOVE DO NOT TOUCH.
+  #
+  # Everything above builds on Linux. That establishes "one host reaches every
+  # target" and leaves open the thing an N×N matrix would otherwise have to
+  # enumerate: whether the HOST matters. The scheme's answer is that it does not
+  # — the target side is a set of packages and the compiler is a retargetable
+  # clang, so N hosts × N targets collapses to N implementations plus one tool.
+  #
+  # ⚠️ THAT IS A CLAIM, AND CLAIMS OF THIS SHAPE HAVE BEEN WRONG HERE BEFORE:
+  # the Linux host needed four separate repairs before it reached PE, and every
+  # one of them was invisible until a build was actually run. Two more hosts
+  # cost two jobs; asserting the collapse without running them costs a paragraph
+  # and proves nothing.
+  #
+  # Each host builds all four targets and RUNS the one that is itself, which is
+  # the same criterion the Linux job applies to itself.
+  host-dimension:
+    name: ${{ matrix.host }} host reaches every target
+    needs: runtime
+    runs-on: ${{ matrix.runner }}
+    timeout-minutes: 120
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - { host: macOS,   runner: macos-14,     native: aarch64-macos      }
+          - { host: Windows, runner: windows-2022, native: x86_64-windows-gnu }
+    defaults:
+      run:
+        shell: bash
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install xlings (Unix)
+        if: runner.os != 'Windows'
+        run: |
+          curl -fsSL https://raw.githubusercontent.com/openxlings/xlings/main/tools/other/quick_install.sh \
+            | bash -s "$XLINGS_VERSION"
+          echo "$HOME/.xlings/subos/current/bin" >> "$GITHUB_PATH"
+
+      - name: Install xlings (Windows)
+        if: runner.os == 'Windows'
+        shell: pwsh
+        run: |
+          irm https://d2learn.org/xlings-install.ps1.txt | iex
+          "$env:USERPROFILE\.xlings\subos\current\bin" | Out-File -FilePath $env:GITHUB_PATH -Encoding utf8 -Append
+
+      - name: Install mcpp
+        run: |
+          for attempt in 1 2 3 4 5 6; do
+            xlings update > /dev/null 2>&1 || true
+            if xlings install "mcpp@$MCPP_VERSION" -y -g; then break; fi
+            if [ "$attempt" = 6 ]; then
+              echo "::error::mcpp@$MCPP_VERSION never appeared in the index"
+              exit 1
+            fi
+            sleep 60
+          done
+          mcpp self config --mirror GLOBAL
+          mcpp toolchain default 'llvm@22.1.8'
+
+      # ⚠️ Same temporary step as the Linux job: the decisions this exercises are
+      # on mcpp#486 and not in any release. When that ships, this goes and
+      # MCPP_VERSION rises. See the long note in the `runtime` job.
+      - name: The build tool, from the branch that has what this needs
+        run: |
+          set -euo pipefail
+          git clone --depth 1 -b feat/import-std-capability \
+            https://github.com/mcpp-community/mcpp "$RUNNER_TEMP/mcpp-src"
+          cd "$RUNNER_TEMP/mcpp-src"
+          printf '{\n  "workspace": {\n    "mcpp": "%s"\n  }\n}\n' "$MCPP_VERSION" > .xlings.json
+          mcpp build --dev
+          # ⚠️ Named exactly, and `-perm` is not used. On Windows every file
+          # reads as executable, so a permission test selects nothing useful;
+          # `mcpp.exe` is the name there and `mcpp` everywhere else.
+          BUILT=$(find target -type f \( -name 'mcpp' -o -name 'mcpp.exe' \) | head -1)
+          [ -n "$BUILT" ] || { echo "::error::mcpp did not build"; exit 1; }
+          echo "$(cd "$(dirname "$BUILT")" && pwd)" >> "$GITHUB_PATH"
+          "$BUILT" --version
+
+      - name: Every target, from this host
+        run: |
+          set -euo pipefail
+          cd examples/same-source
+          for t in x86_64-linux-gnu x86_64-windows-gnu aarch64-macos riscv64-none-elf; do
+            rm -rf target
+            mcpp build --target "$t"
+            a=$(find target -type f \( -name 'openkal-same-source' -o -name 'openkal-same-source.exe' \) | head -1)
+            [ -n "$a" ] || { echo "::error::$t produced no artefact on this host"; exit 1; }
+            echo "$t → $(file -b "$a" 2>/dev/null || echo built)"
+          done
+
+      # ⭐ And the one that is this machine, run rather than inspected — the same
+      # criterion the Linux job holds itself to, applied from a different host.
+      - name: The artefact for this host runs on it
+        run: |
+          set -euo pipefail
+          cd examples/same-source
+          rm -rf target
+          mcpp run --target '${{ matrix.native }}' 2>&1 | tee out.log
+          grep -q 'sorted: 2 4 7'   out.log
+          grep -q 'caught: 42'      out.log
+          grep -q 'unwound: true'   out.log
+          grep -q 'import std over openkal: ok' out.log
