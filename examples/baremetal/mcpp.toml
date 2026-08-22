@@ -1,0 +1,20 @@
+[package]
+name    = "openkal-baremetal-import-std"
+version = "0.1.0"
+
+[build]
+target = "riscv64-none-elf"
+
+# No sysroot: there is no system to take headers or libraries from. The runner
+# is the emulator with firmware, because `-bios default` is what supplies the
+# SBI this program's openkal implementation calls.
+[target.riscv64-none-elf]
+sysroot = ""
+runner  = ["/home/speak/.mcpp/registry/data/xpkgs/xim-x-qemu-riscv/9.2.4-1/bin/qemu-system-riscv64", "-machine", "virt", "-nographic",
+           "-no-reboot", "-bios", "default", "-kernel"]
+
+[dependencies]
+openkal-llvm-runtime = { path = "../.." }
+
+[toolchain]
+default = "llvm@22.1.8"

@@ -146,11 +146,84 @@ include_dirs = ["llvm-generated/freestanding"]
 #   declares that name only under this macro. LLVM's own runtimes build defines
 #   it for the same reason; a hosted build here gets it from elsewhere and the
 #   difference was invisible until this target asked.
-cxxflags = ["-D_LIBUNWIND_USE_DLADDR=0", "-D_GNU_SOURCE"]
+#   _LIBUNWIND_IS_BAREMETAL — ⭐ the unwinder finds its tables through symbols
+#   the linker script defines rather than through the program headers. Both
+#   routes exist upstream and this target must take the second: the headers are
+#   reachable only through `__ehdr_start`, which requires the ELF header to lie
+#   inside a loaded segment, which requires it to be at the lowest loaded
+#   address — and firmware jumps to the lowest loaded address, so putting the
+#   header there means executing it. Measured 2026-08-23: the image linked, the
+#   entry moved to 0x80200270, OpenSBI reported `Next Address 0x80200000`, and
+#   the machine hung executing `\x7fELF` as instructions.
+#
+#   The symbols are `__eh_frame_start` / `__eh_frame_end` (and the `_hdr_`
+#   pair), and AddressSpace.hpp carries the linker script fragment that defines
+#   them. examples/baremetal/link.ld is that fragment.
+cxxflags = ["-D_LIBUNWIND_USE_DLADDR=0", "-D_GNU_SOURCE",
+            "-D_LIBUNWIND_IS_BAREMETAL=1"]
+# ⚠️ THE FLAG BELONGS TO THIS PACKAGE AND LANDS ON THE CONSUMER'S LINK.
+#
+# `_LIBUNWIND_IS_BAREMETAL` above makes the unwinder read `__eh_frame_hdr_start`
+# and `__eh_frame_hdr_end`, which a linker script derives from the SIZE of
+# `.eh_frame_hdr` — and that section exists only when the linker is asked for
+# it. Without the flag both symbols are zero, which libunwind reads as "no
+# index" and answers by scanning `.eh_frame` from the beginning for every frame.
+#
+# That is a correctness-preserving slowdown rather than a failure, which is
+# exactly why it is stated here: nothing would ever report it. The package that
+# chose the bare-metal unwinder is the package that knows the section is wanted.
+ldflags = ["-Wl,--eh-frame-hdr"]
 # The configuration turns filesystem off, so the sources that implement it must
 # not be compiled --- the same rule as random.cpp above, and the same one libc++'s
 # own build applies with the same switch.
-sources = ["!llvm/libcxx/src/filesystem/*.cpp"]
+#
+# ⭐⭐ AND THE COMPILER'S OWN RUNTIME, WHICH ONLY THIS TARGET HAS TO BUILD.
+#
+# A hosted target links `libclang_rt.builtins` from the toolchain and nobody
+# notices it exists. This target has no such archive to link, and what it needs
+# from one is not exotic: on this architecture `long double` is IEEE binary128
+# and there is no hardware for it, so every one of musl's `long double`
+# functions calls a soft-float routine that the compiler emits a call to and
+# does not define.
+#
+# Measured 2026-08-23, after the C library's own link errors were gone: twenty
+# undefined names, all of the form `__addtf3`, `__letf2`, `__fixtfdi`,
+# `__udivti3`. ⚠️ Not one of them appears in any source in this repository ---
+# they are what the compiler decided to call, which is why reading the sources
+# would never have found them and why the first evidence of the gap is a link.
+#
+# So compiler-rt was already vendored for this and was not being built. The
+# selection is compiler-rt's own: its CMakeLists names GENERIC_SOURCES and
+# GENERIC_TF_SOURCES for this architecture, 146 files, and what is excluded
+# below is exactly the remainder of the directory --- taken from that list
+# rather than from a guess about which ones would compile.
+#
+# The remainder is three kinds, and none belongs here:
+#   the 80-bit type that is `long double` on x86 and is not a type here;
+#   bfloat16 conversions, which other architectures' lists take and this one
+#   does not;
+#   routines that need an environment --- atomics with a lock, flushing an
+#   instruction cache, emulated thread-local storage, `fprintf` to report an
+#   assertion, GCC's personality routine (libc++abi supplies its own), and the
+#   two halves of an initialisation array that a linker script places here.
+sources = [
+  "!llvm/libcxx/src/filesystem/*.cpp",
+
+  "llvm/compiler-rt/lib/builtins/*.c",
+
+  "!llvm/compiler-rt/lib/builtins/atomic*.c",
+  "!llvm/compiler-rt/lib/builtins/clear_cache.c",
+  "!llvm/compiler-rt/lib/builtins/emutls.c",
+  "!llvm/compiler-rt/lib/builtins/enable_execute_stack.c",
+  "!llvm/compiler-rt/lib/builtins/eprintf.c",
+  "!llvm/compiler-rt/lib/builtins/gcc_personality_v0.c",
+  "!llvm/compiler-rt/lib/builtins/crtbegin.c",
+  "!llvm/compiler-rt/lib/builtins/crtend.c",
+
+  "!llvm/compiler-rt/lib/builtins/*xf*.c",
+  "!llvm/compiler-rt/lib/builtins/*xc3.c",
+  "!llvm/compiler-rt/lib/builtins/*bf*.c",
+]
 
 [build]
 cxxflags = [

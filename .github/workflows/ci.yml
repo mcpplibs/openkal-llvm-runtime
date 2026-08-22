@@ -82,3 +82,38 @@ jobs:
         run: |
           cd examples/import-std && mcpp run 2>&1 | tee out.log
           grep -q 'import std above openkal: 2 4 7' out.log
+
+      # ⭐⭐ THE SAME PROGRAM ON A MACHINE WITH NO OPERATING SYSTEM.
+      #
+      # Everything above this step runs on a host, and a host has a C library, a
+      # C++ runtime and an unwinder already installed. A program that reaches
+      # one of them by mistake still works — so those steps can pass without
+      # having exercised this package's own copies at all.
+      #
+      # There is nothing here to reach. The C library is openkal-musl, the
+      # standard library and the unwinder are this package's, and beneath them
+      # is firmware whose whole interface is `ecall`. ⇒ This is the step that
+      # cannot go green by accident, which is why the design document makes it
+      # the acceptance criterion rather than one more row.
+      #
+      # ⚠️ The assertion is on the OUTPUT and not on the exit status: firmware
+      # that never reaches the payload exits zero, and so does a payload whose
+      # console writes go nowhere.
+      - name: Install the emulator
+        if: matrix.toolchain == 'llvm@22.1.8'
+        run: |
+          xlings install xim:qemu-riscv -y
+          XLINGS_HOME="$HOME/.mcpp/registry" xlings install xim:qemu-riscv -y
+
+      - name: The same program on bare metal, with exceptions
+        if: matrix.toolchain == 'llvm@22.1.8'
+        run: |
+          set -euo pipefail
+          cd examples/baremetal
+          Q=$(ls -d "$HOME"/.mcpp/registry/data/xpkgs/xim-x-qemu-riscv/*/bin/qemu-system-riscv64 | head -1)
+          sed -i "s|\"qemu-system-riscv64\"|\"$Q\"|" mcpp.toml
+          mcpp run 2>&1 | tee out.log
+          grep -q 'sorted: 2 4 7'   out.log   # containers + algorithms + the allocator
+          grep -q 'caught: 42'      out.log   # the unwinder found the handler
+          grep -q 'unwound: true'   out.log   # ⭐ and ran a destructor on the way
+          grep -q 'baremetal import std: ok' out.log

@@ -1,0 +1,8 @@
+import mcpp;
+int main() {
+    // A relative path in `ldflags` would resolve against the build directory;
+    // `link-script` resolves against the package root.
+    mcpp::link_script("link.ld");
+    mcpp::rerun_if_changed("link.ld");
+    return 0;
+}
