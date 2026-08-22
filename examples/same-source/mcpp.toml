@@ -36,5 +36,23 @@ runner  = ["qemu-system-riscv64", "-machine", "virt", "-nographic",
 [dependencies]
 openkal-llvm-runtime = { path = "../.." }
 
+# ⭐⭐ THE ONE LINE THAT MAKES EVERY TARGET REACHABLE, AND IT IS THE FAMILY NAME
+# THAT DOES IT RATHER THAN THE VERSION.
+#
+# `openkal-llvm` downloads nothing `llvm` does not — it is the same payload, the
+# same clang, the same version. What differs is what mcpp then believes about
+# where the target side comes from: under `llvm`, from the payload built for
+# THIS machine; under `openkal-llvm`, from the graph.
+#
+# ⚠️ Measured 2026-08-23 with `default = "llvm@22.1.8"` here, which is what this
+# file said until now, and which built two of the four targets:
+#
+#     --target x86_64-windows-gnu  → x86_64-w64-mingw32-g++ … __config: No such file
+#     --target aarch64-macos       → "no toolchain payload exists that runs here"
+#
+# Neither message mentions a toolchain family, and both are true of `llvm`: the
+# payload really does have no macOS cross driver, and mingw really is the only
+# thing here that emits PE. ⇒ The build did not fail to find the openkal path,
+# it was never asked for it. One word, and the same source reaches all four.
 [toolchain]
-default = "llvm@22.1.8"
+default = "openkal-llvm@22.1.8"

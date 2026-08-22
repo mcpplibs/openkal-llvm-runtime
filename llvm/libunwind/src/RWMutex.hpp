@@ -13,9 +13,23 @@
 #ifndef __RWMUTEX_HPP__
 #define __RWMUTEX_HPP__
 
-#if defined(_WIN32)
+// ─── openkal ─── BEGIN
+//
+// The platform surface of this file is a read-write lock, and upstream picks it
+// by operating system: SRW locks on `_WIN32`, pthreads everywhere else. openkal
+// makes that question have one answer — `pthread_rwlock_*` is what is beneath on
+// every target, because musl is, and musl's rwlock is a futex, and the futex is
+// `kal_task_wait` / `kal_task_wake`. The same route `libcxx/src/atomic.cpp`
+// takes, and the same reason it takes it.
+//
+// ⚠️ THE INCLUDE IS OUTSIDE THE THREADS CHECK, WHICH IS WHY THIS IS A PATCH AND
+// NOT A FLAG. Upstream reaches `<windows.h>` on `_WIN32` BEFORE asking whether
+// this build has threads at all — so `_LIBUNWIND_HAS_NO_THREADS`, which would
+// otherwise make this file need nothing, does not prevent the include.
+#if defined(_WIN32) && !defined(OPENKAL)
 #include <windows.h>
 #elif !defined(_LIBUNWIND_HAS_NO_THREADS)
+// ─── openkal ─── END
 #include <pthread.h>
 #if defined(__ELF__) && defined(_LIBUNWIND_LINK_PTHREAD_LIB)
 #pragma comment(lib, "pthread")
@@ -34,7 +48,13 @@ public:
   bool unlock() { return true; }
 };
 
-#elif defined(_WIN32)
+// ─── openkal ─── BEGIN
+// ⚠️ THE SECOND OF TWO. The same fact — "this is PE, so use SRW locks" — is
+// stated twice in this file, once to pick the include and once to pick the
+// class. Withdrawing only the first leaves the class referring to `SRWLOCK`
+// with nothing declaring it.
+#elif defined(_WIN32) && !defined(OPENKAL)
+// ─── openkal ─── END
 
 class _LIBUNWIND_HIDDEN RWMutex {
 public:

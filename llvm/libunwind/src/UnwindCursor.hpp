@@ -17,10 +17,24 @@
 #include <stdlib.h>
 #include <unwind.h>
 
-#ifdef _WIN32
+// ─── openkal ─── BEGIN
+// ⚠️ THE THIRD OF THREE, AND THE ONLY ONE THAT IS PURELY UNUSED. Everything in
+// this file that needs a Windows type is under `_LIBUNWIND_SUPPORT_SEH_UNWIND`
+// (lines ~517, ~961, ~2768), and openkal builds with `-fdwarf-exceptions` —
+// the exception mechanism travels with the unwinder we ship rather than with
+// the operating system. So the include is reached, and then nothing it declares
+// is used.
+//
+// ⚠️ Reached, but not harmless: it is what pulled the HOST's mingw sysroot in.
+// `<windows.h>` → `winnt.h` → clang's `x86intrin.h` → `mm_malloc.h`, which calls
+// `__mingw_aligned_malloc` — a function of mingw's CRT, which is not the C
+// library underneath. Measured after AddressSpace.hpp was fixed and the very
+// same error moved one file down.
+#if defined(_WIN32) && !defined(OPENKAL)
   #include <windows.h>
   #include <ntverp.h>
 #endif
+// ─── openkal ─── END
 #ifdef __APPLE__
   #include <mach-o/dyld.h>
 #endif

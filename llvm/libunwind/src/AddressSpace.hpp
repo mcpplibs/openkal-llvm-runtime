@@ -111,8 +111,41 @@ extern char __exidx_end;
 
 #elif defined(_LIBUNWIND_SUPPORT_DWARF_UNWIND) && defined(_WIN32)
 
+// ─── openkal ─── BEGIN
+//
+// ⭐⭐ THE QUESTION HERE IS "WHERE ARE THIS IMAGE'S UNWIND TABLES", AND UPSTREAM
+// ANSWERS IT BY ASKING THE OPERATING SYSTEM TO ENUMERATE THE PROCESS'S MODULES.
+//
+// This file already answers the same question three other ways, and none of
+// them asks an OS: bare metal reads symbols the linker defined, Darwin reads
+// `_dyld_find_unwind_sections` (which `openkal-macos` implements out of the
+// linker's `section$start$__TEXT$__eh_frame`), and ELF reads its own program
+// headers. Only this branch reaches for `EnumProcessModules`.
+//
+// ⚠️ AND THE LEDGER SAID THIS BRANCH WAS ALREADY AVOIDED. `PATCHES.md` recorded
+// it as "已由 DWARF 路线绕开" — written from reading the guards rather than from
+// a build. Measured 2026-08-23, cross-compiling `x86_64-windows-gnu`:
+//
+//     AddressSpace.hpp:114 → /usr/x86_64-w64-mingw32/include/windows.h:69
+//       → winnt.h:1658 → x86intrin.h → mm_malloc.h:43
+//         error: use of undeclared identifier '__mingw_aligned_malloc'
+//
+// The DWARF route is not the one that avoids this branch — `_WIN32 && DWARF` is
+// its exact guard. And the include pulled the HOST's mingw sysroot into a build
+// that had just been freed of any vendor SDK.
+//
+// ⇒ openkal's answer is the one this file already gives twice: the image knows.
+// A statically linked openkal program is one module, its base is a symbol the
+// linker defines (`__ImageBase`, no call), and its section table is at a fixed
+// offset from that base. Reading it is object-format knowledge, which is what
+// an unwinder is made of — it is not a system call, and it is not an OS.
+#if defined(OPENKAL)
+extern "C" char __ImageBase[];
+#else
 #include <windows.h>
 #include <psapi.h>
+#endif
+// ─── openkal ─── END
 
 #elif defined(_LIBUNWIND_USE_DL_ITERATE_PHDR) ||                               \
       defined(_LIBUNWIND_USE_DL_UNWIND_FIND_EXIDX)
@@ -557,6 +590,57 @@ inline bool LocalAddressSpace::findUnwindSections(
   if (info.arm_section && info.arm_section_length)
     return true;
 #elif defined(_LIBUNWIND_SUPPORT_DWARF_UNWIND) && defined(_WIN32)
+// ─── openkal ─── BEGIN
+#if defined(OPENKAL)
+  // The same walk upstream does, over one module instead of every module, and
+  // reaching it through a linker-defined symbol instead of through the OS.
+  //
+  // ⚠️ FIELDS ARE READ AT THEIR OFFSETS RATHER THAN THROUGH `IMAGE_*` STRUCTS,
+  // because those structs are what `<windows.h>` was being included for. PE
+  // fixes every offset below by specification, and they do not vary with the
+  // data model — which is why they are exact-width types and not `long`.
+  {
+    const uint8_t *base = reinterpret_cast<const uint8_t *>(__ImageBase);
+    auto u16 = [](const uint8_t *p) {
+      uint16_t v; __builtin_memcpy(&v, p, sizeof(v)); return v;
+    };
+    auto u32 = [](const uint8_t *p) {
+      uint32_t v; __builtin_memcpy(&v, p, sizeof(v)); return v;
+    };
+
+    const uint8_t *nt = base + u32(base + 0x3c);   // IMAGE_DOS_HEADER::e_lfanew
+    const uint16_t nsec    = u16(nt + 4 + 2);      // FileHeader::NumberOfSections
+    const uint16_t optSize = u16(nt + 4 + 16);     // FileHeader::SizeOfOptionalHeader
+    const uint8_t *sec     = nt + 4 + 20 + optSize;
+
+    bool found_obj = false;
+    bool found_hdr = false;
+    info.dso_base = (uintptr_t)base;
+    for (uint16_t j = 0; j < nsec; ++j, sec += 40) {  // sizeof(SECTION_HEADER)
+      const uintptr_t begin = (uintptr_t)base + u32(sec + 12);  // VirtualAddress
+      const uintptr_t end   = begin + u32(sec + 8);             // Misc.VirtualSize
+      // ⚠️ EIGHT BYTES, AND `.eh_frame` IS NINE CHARACTERS. A PE section name
+      // is a fixed 8-byte field, so the linked image carries `.eh_fram`. This
+      // is upstream's comparison length (`IMAGE_SIZEOF_SHORT_NAME`) and the
+      // reason it is not a mistake.
+      if (!strncmp((const char *)sec, ".text", 8)) {
+        if (targetAddr >= begin && targetAddr < end)
+          found_obj = true;
+      } else if (!strncmp((const char *)sec, ".eh_frame", 8)) {
+        info.dwarf_section = begin;
+        info.dwarf_section_length = u32(sec + 8);
+        found_hdr = true;
+      }
+      if (found_obj && found_hdr)
+        return true;
+    }
+    _LIBUNWIND_TRACE_UNWINDING("findUnwindSections: no .eh_frame section in the "
+                               "image at %p (%d sections)", (void *)base,
+                               (int)nsec);
+    return false;
+  }
+#else
+// ─── openkal ─── END
   HMODULE mods[1024];
   HANDLE process = GetCurrentProcess();
   DWORD needed;
@@ -596,6 +680,9 @@ inline bool LocalAddressSpace::findUnwindSections(
     }
   }
   return false;
+// ─── openkal ─── BEGIN
+#endif  // OPENKAL
+// ─── openkal ─── END
 #elif defined(_LIBUNWIND_SUPPORT_SEH_UNWIND) && defined(_WIN32)
   // Don't even bother, since Windows has functions that do all this stuff
   // for us.

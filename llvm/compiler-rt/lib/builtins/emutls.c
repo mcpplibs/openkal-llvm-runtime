@@ -45,7 +45,21 @@ typedef struct emutls_address_array {
 
 static void emutls_shutdown(emutls_address_array *array);
 
-#ifndef _WIN32
+/* ─── openkal ─── BEGIN
+ * The platform surface here is a mutex and an aligned allocation, and upstream
+ * picks them by operating system: CRITICAL_SECTION + `_aligned_malloc` on
+ * `_WIN32`, pthreads + `posix_memalign` elsewhere. openkal makes the question
+ * have one answer on every target, because musl is beneath every one of them.
+ *
+ * ⚠️ Measured 2026-08-23 — this file is compiled for PE precisely BECAUSE the
+ * platform's own thread-local mechanism is unavailable (`_tls_index` needs a
+ * dynamic loader), and then it reached for that same platform's C runtime:
+ *
+ *     corecrt.h:98: typedef redefinition with different types
+ *     emutls.c:164: call to undeclared function '_aligned_malloc'
+ *
+ * ─── openkal ─── END */
+#if !defined(_WIN32) || defined(OPENKAL)
 
 #include <pthread.h>
 
@@ -374,7 +388,9 @@ emutls_get_address_array(uintptr_t index) {
   return array;
 }
 
-#ifndef _WIN32
+/* ─── openkal ─── BEGIN (同上) */
+#if !defined(_WIN32) || defined(OPENKAL)
+/* ─── openkal ─── END */
 // Our emulated TLS implementation relies on local state (e.g. for the pthread
 // key), and if we duplicate this state across different shared libraries,
 // accesses to the same TLS variable from different shared libraries will yield

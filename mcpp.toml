@@ -94,6 +94,30 @@ sources = [
   # dynamic casts, and the terminate handler.
   "llvm/libcxxabi/src/*.cpp",
   "!llvm/libcxxabi/src/cxa_noexception.cpp",
+  # ⭐⭐ THE SAME CODE TWICE, AND IT SAYS SO ITSELF. `libcxx/src/new.cpp`:
+  #
+  #     "The code below is copied as-is into libc++abi's
+  #      libcxxabi/src/stdlib_new_delete.cpp file. The version in this file is
+  #      the canonical one."
+  #
+  # Upstream builds the two as separate libraries and only one is ever linked.
+  # This package builds them into ONE artefact, so both definitions arrive on
+  # the same link line — every `operator new` and `operator delete`, twice.
+  #
+  # ⚠️ AND IT WAS INVISIBLE ON THREE TARGETS OUT OF FOUR. Both copies are weak,
+  # and on ELF and Mach-O a duplicate weak definition is what weak MEANS: the
+  # linker picks one and says nothing. COFF's weak externals carry the comdat
+  # they default to, so the same two definitions became 30 errors:
+  #
+  #     ld.lld: error: duplicate symbol:
+  #       .weak._Znwy.default._Z22__throw_bad_alloc_shimv
+  #     >>> libcxxabi/src/stdlib_new_delete.cpp:234
+  #     >>> libcxx/src/new.o
+  #
+  # ⇒ Excluded package-wide rather than under `cfg(windows)`: the third format
+  # did not create the duplication, it reported it. Taking the canonical copy on
+  # every target is what makes the four builds the same build.
+  "!llvm/libcxxabi/src/stdlib_new_delete.cpp",
 
   # The standard library.
   "llvm/libcxx/src/*.cpp",
@@ -188,8 +212,13 @@ include_dirs = [
 # failures); ⚠️ that experiment also recorded that the flag is LLVM-only, which
 # is why it can be stated here at all: this target's compiler is clang by
 # construction.
-cxxflags = ["-femulated-tls"]
-cflags   = ["-femulated-tls"]
+# ⚠️ AND THE FLAG ITSELF IS NO LONGER STATED HERE. It was
+# `cxxflags = ["-femulated-tls"]`, which reached this package's objects and
+# stopped — the consumer's own `thread_local` would have been compiled the other
+# way, and the two would have linked. mcpp derives it now for every unit in the
+# graph, from the fact this package's `std-module` establishes
+# (`targetCxxRuntime`) plus the target's object format. The paragraphs above are
+# kept because they are the measurement that determined the rule.
 # ⚠️ libc++ carries its OWN copy of the 128-bit multiply-overflow helper, for
 # platforms where compiler-rt is not linked. Supplying compiler-rt's makes them
 # a pair: `duplicate symbol: __muloti4`. The freestanding block never hit it
@@ -242,14 +271,32 @@ sources = [
 # Stated here it covers this package; a consumer states it too, and mcpp
 # deciding it from the capability is the shape that would remove the repetition.
 [target.'cfg(windows)'.build]
-cxxflags = ["-fdwarf-exceptions"]
-cflags   = ["-fdwarf-exceptions"]
+# ⚠️ `-fdwarf-exceptions` WAS HERE AND IS NOT ANY MORE, for the reason the macOS
+# block above records: it decides what a `throw` COMPILES INTO, so it is true of
+# the graph rather than of this package. mcpp derives it; see
+# `graph_runtime_compile_flags`.
 sources = [
   "!llvm/libcxx/src/filesystem/int128_builtins.cpp",
   "llvm/compiler-rt/lib/builtins/*.c",
+  # ⭐ EMULATED TLS, THE THIRD FORMAT TO NEED IT AND FOR THE SAME REASON.
+  #
+  # Mach-O reaches a `thread_local` through `_tlv_bootstrap` and PE through
+  # `_tls_index`; both are bootstrapped by a DYNAMIC LOADER, and a self-contained
+  # openkal image has none. Measured 2026-08-23, after everything else linked:
+  #
+  #     ld.lld: error: undefined symbol: _tls_index
+  #     >>> referenced by libcxxabi/src/cxa_exception_storage.cpp:33
+  #
+  # — one `thread_local` in libc++abi, holding the current exception. The macOS
+  # block found the same wall at `_tlv_bootstrap`, which is why this line is a
+  # copy of that one rather than a new idea.
+  "llvm/compiler-rt/lib/builtins/emutls.c",
   "!llvm/compiler-rt/lib/builtins/atomic*.c",
   "!llvm/compiler-rt/lib/builtins/clear_cache.c",
-  "!llvm/compiler-rt/lib/builtins/emutls.c",
+  # ⚠️ AND THE EXCLUSION IS DELETED RATHER THAN LEFT BELOW THE INCLUSION — an
+  # exclusion anywhere in a list beats an inclusion anywhere else in it, which
+  # the macOS block records having measured (no object, and
+  # `undefined symbol: __emutls_get_address`).
   "!llvm/compiler-rt/lib/builtins/enable_execute_stack.c",
   "!llvm/compiler-rt/lib/builtins/eprintf.c",
   "!llvm/compiler-rt/lib/builtins/gcc_personality_v0.c",
@@ -384,6 +431,27 @@ cxxflags = [
   # macOS target then failed on `unknown type name 'Dl_info'` — the same fact,
   # asked again, at a place that had not been told.
   "-D_LIBUNWIND_USE_DLADDR=0",
+
+  # ⭐⭐ `_WIN32` SAYS WHAT THE OBJECT FORMAT IS, NOT WHAT IS BENEATH.
+  #
+  # The same correction `port/include/__config` makes for libc++, made for the
+  # unwinder — and it has to be a flag rather than an overlay because both
+  # affected files are included with quotes from a sibling `.cpp`, and a quoted
+  # include finds the includer's own directory first. `port/include` cannot
+  # shadow them; only a marked patch can. See `llvm/PATCHES.md`.
+  #
+  # Two questions become one answer:
+  #
+  #   AddressSpace.hpp  where are this image's unwind tables?
+  #                     → the image knows: `__ImageBase` and the section table,
+  #                       no `EnumProcessModules`, no `<windows.h>`
+  #   RWMutex.hpp       what read-write lock does this platform have?
+  #                     → pthreads, i.e. musl, i.e. `kal_task_wait`
+  #
+  # ⚠️ Package-wide and not under `cfg(windows)`, for the reason `_GNU_SOURCE`
+  # and dladdr were moved up: it is a fact about openkal rather than about a
+  # target, and leaving it below means the next object format rediscovers it.
+  "-DOPENKAL=1",
   # ⭐ WHETHER THE IMPLEMENTATION BENEATH PROVIDES `openkal.task`.
   #
   # `llvm/libcxx/src/atomic.cpp` asks openkal for the suspension primitive
@@ -434,6 +502,10 @@ cxxflags = [
 
 cflags = [
   "-D_LIBUNWIND_IS_NATIVE_ONLY",
+  # ⚠️ AND ON THE C SIDE TOO, WHICH IS NOT A DUPLICATE — `compiler-rt` is C, and
+  # `emutls.c` asks the same "which OS is beneath" question that libunwind's
+  # headers do. One name for one fact; see the cxxflags entry for what it means.
+  "-DOPENKAL=1",
   "-DNDEBUG",
   "-w",
   "-ffunction-sections",
