@@ -288,7 +288,11 @@ include_dirs = ["llvm-generated/freestanding"]
 #   The symbols are `__eh_frame_start` / `__eh_frame_end` (and the `_hdr_`
 #   pair), and AddressSpace.hpp carries the linker script fragment that defines
 #   them. examples/same-source/link.ld is that fragment.
-cxxflags = ["-D_LIBUNWIND_IS_BAREMETAL=1"]
+# ⚠️ `-U` then `-D`: the package-wide list above already defined it, and a
+# second `-D` of a different value is a redefinition warning rather than an
+# override.
+cxxflags = ["-D_LIBUNWIND_IS_BAREMETAL=1", "-UOPENKAL_HAS_TASK", "-DOPENKAL_HAS_TASK=0"]
+cflags   = ["-UOPENKAL_HAS_TASK", "-DOPENKAL_HAS_TASK=0"]
 # ⚠️ THE FLAG BELONGS TO THIS PACKAGE AND LANDS ON THE CONSUMER'S LINK.
 #
 # `_LIBUNWIND_IS_BAREMETAL` above makes the unwinder read `__eh_frame_hdr_start`
@@ -380,6 +384,18 @@ cxxflags = [
   # macOS target then failed on `unknown type name 'Dl_info'` — the same fact,
   # asked again, at a place that had not been told.
   "-D_LIBUNWIND_USE_DLADDR=0",
+  # ⭐ WHETHER THE IMPLEMENTATION BENEATH PROVIDES `openkal.task`.
+  #
+  # `llvm/libcxx/src/atomic.cpp` asks openkal for the suspension primitive
+  # rather than asking an operating system — see llvm/PATCHES.md. An
+  # implementation with a single execution context has none to offer, and
+  # openkal expresses that by the interface being absent, so the C++ runtime has
+  # to know before it is compiled.
+  #
+  # ⚠️ THE SAME FACT openkal-musl STATES AS `OKM_HAS_TASK`. Two consumers, two
+  # declarations, because a manifest cannot yet read what an implementation
+  # provides. Cleared for `cfg(os = "none")` below, exactly as musl's is.
+  "-DOPENKAL_HAS_TASK=1",
   # ⭐ musl's non-standard names live behind this, and they are not optional for
   # libc++: the locale backend calls `vasprintf`, `strtof_l`, `strtod_l`,
   # `strtold_l`, and libc++abi's guard reaches `syscall`. All of them are musl's

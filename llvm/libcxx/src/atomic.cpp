@@ -19,7 +19,52 @@
 
 #include "include/apple_availability.h"
 
-#ifdef __linux__
+// ─── openkal ─── BEGIN ────────────────────────────────────────────────────────
+//
+// This file's platform surface is exactly two functions, and the chain below
+// answers them once per operating system: Linux by `SYS_futex`, FreeBSD by
+// `_umtx_op`, OpenBSD by `futex`, Windows by `WaitOnAddress`, and everything
+// else by not waiting at all.
+//
+// openkal answers them once, full stop. `kal_task_wait` / `kal_task_wake` ARE
+// this primitive — the specification calls it the suspension primitive — and
+// they are the same two calls on every target this library is built for,
+// including one with no operating system underneath.
+//
+// ⚠️ IT WAS ALREADY REACHING openkal ON ONE TARGET, THE LONG WAY ROUND. On
+// Linux the branch below issues `SYS_futex`, openkal-musl's port intercepts the
+// system call, and its `__okm_futex` calls `kal_task_wait`. Going directly
+// removes that indirection AND makes the other object formats work, where the
+// interception has no system call to intercept.
+//
+// See llvm/PATCHES.md for every region of this vendored tree that is marked
+// like this and why.
+// ⚠️ AND ONLY WHEN THE IMPLEMENTATION BENEATH PROVIDES `openkal.task`.
+//
+// openkal is composable: an implementation provides an interface in whole or
+// not at all, and one with a single execution context has no suspension
+// primitive to offer — clause 6.2 says the remedy is that its absence be
+// expressed by its absence, so `kal_task_wait` is simply not there.
+//
+// ⚠️ Measured 2026-08-23 on riscv64 over SBI, after this block was written
+// without the guard: everything compiled and the link stopped on
+// `undefined symbol: kal_task_wait`. That is 6.1 working, not a defect — and
+// the answer is not to weaken openkal but to fall through to the branch that
+// was already correct there. `std::atomic::wait` on a machine with one
+// execution context has nothing to wait FOR; upstream's baseline polls, and
+// polling is the accurate implementation rather than a stand-in.
+//
+// ⚠️ THIS IS THE SAME FACT openkal-musl STATES AS `OKM_HAS_TASK`, said a second
+// time because there is now a second consumer. A manifest that could name the
+// interfaces an implementation provides would let both read one declaration;
+// today each states it for itself.
+#if defined(_LIBCPP_HAS_MUSL_LIBC) && OPENKAL_HAS_TASK
+
+// No headers: openkal's are reached through the declarations below, and the two
+// entry points are declared where they are used.
+
+#elif defined(__linux__)
+// ─── openkal ─── END ──────────────────────────────────────────────────────────
 
 #  include <linux/futex.h>
 #  include <sys/syscall.h>
@@ -66,7 +111,60 @@ _LIBCPP_BEGIN_NAMESPACE_STD
 
 struct NoTimeout {};
 
-#ifdef __linux__
+// ─── openkal ─── BEGIN ────────────────────────────────────────────────────────
+#if defined(_LIBCPP_HAS_MUSL_LIBC) && OPENKAL_HAS_TASK
+
+// ⚠️ A name for it. `__UINTPTR_TYPE__` expands to several tokens
+// (`long unsigned int`), so it cannot be written as a function-style cast —
+// the compiler reports `expected '(' for function-style cast`, which does not
+// mention the macro. One alias, used everywhere below.
+using __okl_uptr = __UINTPTR_TYPE__;
+
+extern "C" {
+// Declared rather than included: openkal's headers are C, this file is C++ in
+// libc++'s own namespace, and two declarations are cheaper than arranging for a
+// header to be reachable from inside `_LIBCPP_BEGIN_NAMESPACE_STD`.
+//
+// ⚠️ The widths are openkal's own (`kal_u32`, `kal_u64`), spelled here as what
+// the specification says they are. openkal derives them from the compiler for
+// exactly this reason: a consumer can restate them without a header and cannot
+// get a different type than the implementation was built with.
+int kal_task_wait(const unsigned int* __word, unsigned int __expected, unsigned long long __timeout_ns);
+int kal_task_wake(const unsigned int* __word, __okl_uptr __count, __okl_uptr* __woken);
+}
+
+template <std::size_t _Size, class MaybeTimeout>
+static void __platform_wait_on_address(void const* __ptr, void const* __val, MaybeTimeout maybe_timeout_ns) {
+  static_assert(_Size == 4, "Can only wait on 4 bytes value");
+  alignas(unsigned int) char buffer[_Size];
+  std::memcpy(&buffer, const_cast<const void*>(__val), _Size);
+  // ⚠️ The same two-second default the Linux branch uses, and for the same
+  // reason: a wait that never times out cannot notice a wake it raced with.
+  // Zero means "no timeout" to openkal, so the default is stated rather than
+  // passed through.
+  unsigned long long __ns = 2'000'000'000ull;
+  if constexpr (!is_same_v<MaybeTimeout, NoTimeout>) {
+    __ns = static_cast<unsigned long long>(maybe_timeout_ns);
+  }
+  kal_task_wait(reinterpret_cast<const unsigned int*>(__ptr),
+                *reinterpret_cast<const unsigned int*>(&buffer),
+                __ns);
+}
+
+template <std::size_t _Size>
+static void __platform_wake_by_address(void const* __ptr, bool __notify_one) {
+  static_assert(_Size == 4, "Can only wake up on 4 bytes value");
+  // ⚠️ `-1` for "all", which is openkal's spelling of what the other branches
+  // write as `INT_MAX`. The count is a `kal_uintptr`, so the maximum is stated
+  // as the wrap rather than as a header's constant.
+  __okl_uptr __woken = 0;
+  kal_task_wake(reinterpret_cast<const unsigned int*>(__ptr),
+                __notify_one ? __okl_uptr(1) : __okl_uptr(-1),
+                &__woken);
+}
+
+#elif defined(__linux__)
+// ─── openkal ─── END ──────────────────────────────────────────────────────────
 
 template <std::size_t _Size, class MaybeTimeout>
 static void __platform_wait_on_address(void const* __ptr, void const* __val, MaybeTimeout maybe_timeout_ns) {
