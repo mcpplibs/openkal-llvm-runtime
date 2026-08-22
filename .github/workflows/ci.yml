@@ -197,3 +197,100 @@ jobs:
           # The four lines are the same four lines.
           diff <(grep -E '^(sorted|caught|unwound|import std over openkal):' out.log) \
                <(grep -E '^(sorted|caught|unwound|import std over openkal):' host.log)
+
+      # ⭐⭐ AND THE SAME SOURCE FOR TWO MACHINES THIS ONE IS NOT.
+      #
+      # The two steps above prove the source does not know which machine it is
+      # for. These prove the BUILD does not need to be on it: one Linux host
+      # produces a PE and a Mach-O, and the jobs below run them on the real
+      # thing with nothing installed.
+      #
+      # ⚠️ THE ARTEFACT IS THE ARGUMENT, WHICH IS WHY THOSE JOBS INSTALL NOTHING.
+      # Not mcpp, not a compiler, not a C runtime — the program carries its C
+      # library, its C++ runtime and its unwinder, and what remains is the
+      # operating system it was built for. A run that needed a redistributable
+      # installed first would be demonstrating something weaker.
+      - name: The same source, built here for Windows and for macOS
+        if: matrix.toolchain == 'llvm@22.1.8'
+        run: |
+          set -euo pipefail
+          cd examples/same-source
+          mkdir -p "$RUNNER_TEMP/cross"
+          for t in x86_64-windows-gnu aarch64-macos; do
+            rm -rf target
+            mcpp build --target "$t"
+            a=$(find target -type f \( -name 'openkal-same-source' -o -name '*.exe' \) | head -1)
+            [ -n "$a" ] || { echo "::error::$t produced no artefact"; exit 1; }
+            echo "$t → $(file -b "$a")"
+            cp "$a" "$RUNNER_TEMP/cross/"
+          done
+          # ⚠️ The format is asserted here rather than left to the run jobs. A
+          # run that fails tells you the program did not work; this tells you
+          # what was produced, and the two failures need different fixes.
+          file "$RUNNER_TEMP/cross/openkal-same-source.exe" | grep -q 'PE32+ executable'
+          file "$RUNNER_TEMP/cross/openkal-same-source"     | grep -q 'Mach-O 64-bit arm64'
+
+      - uses: actions/upload-artifact@v4
+        if: matrix.toolchain == 'llvm@22.1.8'
+        with:
+          name: cross-artifacts
+          path: ${{ runner.temp }}/cross/
+          if-no-files-found: error
+
+  # ---------------------------------------------------------------------------
+  # ⭐⭐ THE ACCEPTANCE CRITERION FOR PORTABILITY OF THE ARTEFACT.
+  #
+  # A cross build that produces a well-formed file proves the compiler was told
+  # the right target. It does not prove the program runs, and every difference
+  # this ecosystem has had to find on these two platforms — the loader-bootstrapped
+  # thread-local, the unwinder's search for its own tables, the personality
+  # routine — links successfully and fails at run time.
+  #
+  # ⚠️ These jobs deliberately have NO toolchain steps. If one is ever added
+  # because "the program needs it", that is the finding, not the fix.
+  run-on-windows:
+    name: the artefact built on Linux runs on Windows
+    needs: runtime
+    runs-on: windows-2022
+    timeout-minutes: 10
+    defaults:
+      run:
+        shell: bash
+    steps:
+      - uses: actions/download-artifact@v4
+        with: { name: cross-artifacts, path: art }
+      - name: It runs, and it unwinds
+        run: |
+          set -euo pipefail
+          ./art/openkal-same-source.exe 2>&1 | tee out.log
+          grep -q 'sorted: 2 4 7'   out.log
+          grep -q 'caught: 42'      out.log
+          # ⭐ The line a link cannot fake: a destructor ran during the unwind,
+          # so libunwind found `.eh_frame` by reading the image rather than by
+          # asking the operating system to enumerate modules.
+          grep -q 'unwound: true'   out.log
+          grep -q 'import std over openkal: ok' out.log
+
+  run-on-macos:
+    name: the artefact built on Linux runs on macOS
+    needs: runtime
+    runs-on: macos-14
+    timeout-minutes: 10
+    steps:
+      - uses: actions/download-artifact@v4
+        with: { name: cross-artifacts, path: art }
+      - name: It runs, and it unwinds
+        run: |
+          set -euo pipefail
+          # ⚠️ The executable bit does not survive an artefact upload.
+          chmod +x art/openkal-same-source
+          # ⚠️ AND THE SIGNATURE DOES. arm64 macOS refuses an unsigned image, so
+          # this is asserted before the run: a failure here is "the linker did
+          # not ad-hoc sign it", which is a different repair from "the program
+          # crashed".
+          codesign -dv art/openkal-same-source 2>&1 | grep -q 'adhoc\|Signature'
+          ./art/openkal-same-source 2>&1 | tee out.log
+          grep -q 'sorted: 2 4 7'   out.log
+          grep -q 'caught: 42'      out.log
+          grep -q 'unwound: true'   out.log
+          grep -q 'import std over openkal: ok' out.log
