@@ -131,6 +131,24 @@ jobs:
           git clone --depth 1 -b feat/import-std-capability \
             https://github.com/mcpp-community/mcpp "$RUNNER_TEMP/mcpp-src"
           cd "$RUNNER_TEMP/mcpp-src"
+          # ⚠️ THE CLONE CARRIES A WORKSPACE PIN, AND IT NAMES A VERSION THE
+          # INDEX NO LONGER HAS.
+          #
+          #     xlings: version '2026.8.17.1' not found for 'mcpp'
+          #       available: 2026.8.19.4
+          #
+          # `.xlings.json` at a repository root says which mcpp a build in that
+          # tree uses, and mcpp's own bootstrap pin does not move when mcpp is
+          # released — it is the version that was current when the pin was last
+          # touched. Cloning the branch therefore imports a pin that is only
+          # valid inside that repository's own CI, where the same file selects
+          # what gets installed.
+          #
+          # Rewriting it to the version this job already installed is what makes
+          # the two agree. It changes nothing about what is being tested: the
+          # pin selects the tool that BUILDS mcpp, and what is under test is the
+          # mcpp that comes out.
+          printf '{\n  "workspace": {\n    "mcpp": "%s"\n  }\n}\n' "$MCPP_VERSION" > .xlings.json
           mcpp build --release
           BUILT=$(find target -type f -name mcpp -perm -u+x | head -1)
           [ -n "$BUILT" ] || { echo "::error::mcpp did not build"; exit 1; }
