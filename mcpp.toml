@@ -7,6 +7,16 @@ license     = "Apache-2.0"
 authors     = ["mcpplibs"]
 repo        = "https://github.com/mcpplibs/openkal-llvm-runtime"
 
+# What this package is, stated as a capability rather than left to be inferred
+# from its name.
+#
+# The build tool refuses `import std;' on a target with no operating system,
+# and the refusal is right whenever nothing supplies a hosted standard library
+# --- which was every such target until this package. The fact that one is
+# present is a property of the dependency graph, not of the triple, so it is
+# declared here and read there.
+provides = ["hosted-standard-library"]
+
 # The C library beneath. A C++ standard library is not portable in the sense a
 # program is: it is configured for one C library and compiled against that
 # library's headers, and the configuration is what this package supplies. The
