@@ -219,7 +219,31 @@ sources = [
   "!llvm/compiler-rt/lib/builtins/*xc3.c",
 ]
 
+# ⭐ THE EXCEPTION MECHANISM FOLLOWS THE UNWINDER WE SHIP, NOT THE PLATFORM'S
+# DEFAULT.
+#
+# clang targeting this triple defines `__SEH__`, because that is what mingw uses
+# on this architecture — and libunwind's own public header then reaches for
+# `<windows.h>` and `<ntverp.h>`:
+#
+#     unwind.h:22 → /usr/x86_64-w64-mingw32/include/windows.h
+#                 → crtdefs.h → corecrt.h:98 typedef redefinition
+#
+# ⚠️ That is the same class of failure as every other one on this target: a
+# vendor SDK reached because a platform macro was read as a statement about what
+# is underneath. Here the answer is a flag rather than an overlay, because the
+# question is genuinely a build decision: this program's unwinder is the one in
+# this package, and it reads DWARF tables — the same ones it reads on ELF and on
+# Mach-O.
+#
+# ⚠️ IT HAS TO REACH EVERY TRANSLATION UNIT IN THE GRAPH, for the reason
+# docs/13 records about `-fno-exceptions`: the model is recorded in a BMI, and a
+# dependency compiled one way cannot be imported by a unit compiled the other.
+# Stated here it covers this package; a consumer states it too, and mcpp
+# deciding it from the capability is the shape that would remove the repetition.
 [target.'cfg(windows)'.build]
+cxxflags = ["-fdwarf-exceptions"]
+cflags   = ["-fdwarf-exceptions"]
 sources = [
   "!llvm/libcxx/src/filesystem/int128_builtins.cpp",
   "llvm/compiler-rt/lib/builtins/*.c",
