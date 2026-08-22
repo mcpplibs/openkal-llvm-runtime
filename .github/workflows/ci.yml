@@ -155,11 +155,11 @@ jobs:
           echo "$(cd "$(dirname "$BUILT")" && pwd)" >> "$GITHUB_PATH"
           "$BUILT" --version
 
-      - name: The same program on bare metal, with exceptions
+      - name: The same source on bare metal, with exceptions
         if: matrix.toolchain == 'llvm@22.1.8'
         run: |
           set -euo pipefail
-          cd examples/baremetal
+          cd examples/same-source
           Q=$(ls -d "$HOME"/.mcpp/registry/data/xpkgs/xim-x-qemu-riscv/*/bin/qemu-system-riscv64 | head -1)
           # ⚠️ Anchored on the BARE NAME, so a checkout that already carries a
           # path is left alone rather than getting a path inside a path. The
@@ -172,4 +172,21 @@ jobs:
           grep -q 'sorted: 2 4 7'   out.log   # containers + algorithms + the allocator
           grep -q 'caught: 42'      out.log   # the unwinder found the handler
           grep -q 'unwound: true'   out.log   # ⭐ and ran a destructor on the way
-          grep -q 'baremetal import std: ok' out.log
+          grep -q 'import std over openkal: ok' out.log
+
+      # ⭐⭐ AND THE SAME SOURCE ON THIS MACHINE, WHICH IS WHAT MAKES THE STEP
+      # ABOVE A DEMONSTRATION RATHER THAN AN ILLUSTRATION.
+      #
+      # Nothing is edited between the two commands — no `#if`, no second
+      # directory, no second source. The only thing that differs is the memory
+      # layout, and `build.mcpp` states it behind a condition on the target OS
+      # because that is a statement about the machine.
+      - name: The same source, on this machine, over openkal-linux
+        if: matrix.toolchain == 'llvm@22.1.8'
+        run: |
+          set -euo pipefail
+          cd examples/same-source && mcpp run 2>&1 | tee host.log
+          grep -q 'import std over openkal: ok' host.log
+          # The four lines are the same four lines.
+          diff <(grep -E '^(sorted|caught|unwound|import std over openkal):' out.log) \
+               <(grep -E '^(sorted|caught|unwound|import std over openkal):' host.log)

@@ -1,0 +1,26 @@
+import mcpp;
+#include <cstring>
+
+int main() {
+    // ⭐⭐ THE LINKER SCRIPT IS FOR THE MACHINE WITH NO OPERATING SYSTEM, AND
+    // ONLY FOR IT. THAT CONDITION IS WHAT MAKES THIS ONE PROJECT INSTEAD OF TWO.
+    //
+    // The claim the design document makes is that a program above openkal is
+    // built without regard to which implementation is beneath — same source,
+    // different machine, nothing edited. A directory that could only be built
+    // one way would illustrate that claim rather than demonstrate it.
+    //
+    // So: `mcpp run` puts this on the host over openkal-linux, and
+    // `mcpp run --target riscv64-none-elf` puts the SAME source on riscv64 over
+    // OpenSBI. Both print the same four lines. The only thing that differs is
+    // the memory layout, which is a statement about the machine — and it is
+    // stated here, once, behind the condition that says which machine.
+    if (std::strcmp(mcpp::target_os(), "none") == 0) {
+        // A relative path in `ldflags` would resolve against the build
+        // directory; `link-script` resolves against the package root.
+        mcpp::link_script("link.ld");
+    }
+    mcpp::rerun_if_changed("link.ld");
+    mcpp::rerun_if_env_changed("MCPP_TARGET_OS");
+    return 0;
+}

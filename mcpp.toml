@@ -158,7 +158,7 @@ include_dirs = ["llvm-generated/freestanding"]
 #
 #   The symbols are `__eh_frame_start` / `__eh_frame_end` (and the `_hdr_`
 #   pair), and AddressSpace.hpp carries the linker script fragment that defines
-#   them. examples/baremetal/link.ld is that fragment.
+#   them. examples/same-source/link.ld is that fragment.
 cxxflags = ["-D_LIBUNWIND_USE_DLADDR=0", "-D_GNU_SOURCE",
             "-D_LIBUNWIND_IS_BAREMETAL=1"]
 # ⚠️ THE FLAG BELONGS TO THIS PACKAGE AND LANDS ON THE CONSUMER'S LINK.

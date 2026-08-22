@@ -1,7 +1,16 @@
 // `import std;` on a machine with no operating system.
 //
-// ⭐ THIS IS THE ACCEPTANCE CRITERION, AND ITS VALUE IS THAT IT CANNOT GO GREEN
-// BY ACCIDENT.
+// ⭐⭐ ONE SOURCE, TWO MACHINES, NOTHING EDITED BETWEEN THEM.
+//
+//     mcpp run                             — this machine, over openkal-linux
+//     mcpp run --target riscv64-none-elf   — riscv64, over OpenSBI, no OS
+//
+// Both print the same four lines. That is the claim the design document makes
+// about building above openkal, written as something a reader can run rather
+// than something they have to believe.
+//
+// ⭐ AND THE SECOND COMMAND IS THE ACCEPTANCE CRITERION, BECAUSE IT CANNOT GO
+// GREEN BY ACCIDENT.
 //
 // A hosted target has a C library, a C++ runtime and an unwinder already
 // installed, and a program that reaches one of them by mistake still works ---
@@ -55,6 +64,6 @@ int main() {
     // is consumed by a consteval constructor, and a value computed at run time
     // cannot be one. The compiler says so, which is the whole reason it is
     // written this way.
-    std::println("baremetal import std: {}", ok ? "ok" : "FAILED");
+    std::println("import std over openkal: {}", ok ? "ok" : "FAILED");
     return ok ? 0 : 1;
 }
