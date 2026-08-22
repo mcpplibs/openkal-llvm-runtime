@@ -8,9 +8,21 @@ target = "riscv64-none-elf"
 # No sysroot: there is no system to take headers or libraries from. The runner
 # is the emulator with firmware, because `-bios default` is what supplies the
 # SBI this program's openkal implementation calls.
+#
+# ⚠️ THE EMULATOR IS NAMED WITHOUT A PATH AND MUST STAY THAT WAY.
+#
+# Running this locally means pointing the name at an installed emulator, and the
+# obvious way to do that is to edit this line. Doing so and committing puts one
+# machine's absolute path into a file every other machine reads — measured
+# twice in this ecosystem now, the first time in `conformance/mcpp.toml`, and
+# both times the way it showed was every other repository's CI failing on a path
+# that exists on exactly one laptop.
+#
+# The CI step that runs this rewrites the name in its own checkout and does not
+# commit; do the same locally, or put the emulator on PATH.
 [target.riscv64-none-elf]
 sysroot = ""
-runner  = ["/home/speak/.mcpp/registry/data/xpkgs/xim-x-qemu-riscv/9.2.4-1/bin/qemu-system-riscv64", "-machine", "virt", "-nographic",
+runner  = ["qemu-system-riscv64", "-machine", "virt", "-nographic",
            "-no-reboot", "-bios", "default", "-kernel"]
 
 [dependencies]
