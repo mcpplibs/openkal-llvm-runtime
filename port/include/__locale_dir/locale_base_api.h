@@ -52,10 +52,19 @@
 
 #include <__config>
 
-#if _LIBCPP_HAS_LOCALIZATION && _LIBCPP_HAS_MUSL_LIBC && defined(__APPLE__)
-// The one case upstream's chain answers wrongly for this configuration. Every
-// other target — including musl on ELF, where `__linux__` is defined and the
-// chain already reaches the same header — falls through to upstream below.
+// ⭐ THE PREDICATE IS THE C LIBRARY, FULL STOP — NOT "the C library, on Apple".
+//
+// It was `&& defined(__APPLE__)` at first, because Apple was the target that
+// exposed it. Measured 2026-08-23 on the next one: `x86_64-windows-gnu` over
+// openkal takes `_LIBCPP_MSVCRT_LIKE` → `support/windows.h` and stops on
+// `_locale_t`, which is Microsoft's C runtime, for a program whose C library
+// is musl. Same shape, second object format.
+//
+// ⇒ Narrowing the rule to one platform would have meant writing it again per
+// platform. The question upstream asks is which C library is beneath; this
+// answers it, and every target where the answer is musl now reaches the same
+// backend — which on ELF is the one it already reached.
+#if _LIBCPP_HAS_LOCALIZATION && _LIBCPP_HAS_MUSL_LIBC
 #  include <__locale_dir/support/linux.h>
 #else
 #  include_next <__locale_dir/locale_base_api.h>
