@@ -36,23 +36,25 @@ runner  = ["qemu-system-riscv64", "-machine", "virt", "-nographic",
 [dependencies]
 openkal-llvm-runtime = { path = "../.." }
 
-# ⭐⭐ THE ONE LINE THAT MAKES EVERY TARGET REACHABLE, AND IT IS THE FAMILY NAME
-# THAT DOES IT RATHER THAN THE VERSION.
+# AN ORDINARY TOOLCHAIN, AND THAT IS THE POINT OF THE LINE.
 #
-# `openkal-llvm` downloads nothing `llvm` does not — it is the same payload, the
-# same clang, the same version. What differs is what mcpp then believes about
-# where the target side comes from: under `llvm`, from the payload built for
-# THIS machine; under `openkal-llvm`, from the graph.
+# `llvm@22.1.8` names a compiler and nothing else. Where this program's headers,
+# C library, C++ runtime and platform implementation come from is not stated
+# here at all — it follows from the one dependency above, and mcpp resolves it
+# after the dependency graph exists.
 #
-# ⚠️ Measured 2026-08-23 with `default = "llvm@22.1.8"` here, which is what this
-# file said until now, and which built two of the four targets:
+# ⚠️ This file used to name `openkal-llvm@22.1.8`, a toolchain family that
+# downloaded nothing `llvm` does not: the same payload, the same clang, the same
+# version. What differed was what mcpp then believed about the target side. That
+# belief now comes from what the packages declare, so the family name carries
+# nothing; it is still accepted, and it decides nothing.
 #
-#     --target x86_64-windows-gnu  → x86_64-w64-mingw32-g++ … __config: No such file
-#     --target aarch64-macos       → "no toolchain payload exists that runs here"
+# The build reports what it resolved, which is where to look when a target does
+# not behave as expected:
 #
-# Neither message mentions a toolchain family, and both are true of `llvm`: the
-# payload really does have no macOS cross driver, and mingw really is the only
-# thing here that emits PE. ⇒ The build did not fail to find the openkal path,
-# it was never asked for it. One word, and the same source reaches all four.
+#     Target      aarch64-macos → arm64-apple-macos14.0
+#       kernel-abi  openkal (openkal-macos@0.3.2, graph)
+#       c-abi       musl    (openkal-musl@0.3.2, graph)
+#       c++         libc++  (openkal-llvm-runtime@0.1.0, graph)
 [toolchain]
-default = "openkal-llvm@22.1.8"
+default = "llvm@22.1.8"
