@@ -122,6 +122,32 @@ that enquiry from `__ehdr_start`.
 
 A package that had only ever been built would have shipped that.
 
+## Four targets, one source
+
+`examples/same-source` is built for four machines from one `src/main.cpp` with
+nothing edited between them, and it prints the same four lines on each:
+
+| target | format | how it is run |
+|---|---|---|
+| `x86_64-linux-gnu` | ELF | directly |
+| `x86_64-windows-gnu` | PE32+ | on a Windows machine |
+| `aarch64-macos` | Mach-O | on an arm64 Mac |
+| `riscv64-none-elf` | ELF | QEMU with real OpenSBI firmware |
+
+The fourth is the one that cannot pass by accident. A hosted target has a C
+library, a C++ runtime and an unwinder already installed, so a program that
+reaches one of them by mistake still works. There is nothing to reach on the
+fourth: the C library is openkal-musl, the standard library and the unwinder are
+this package's, and beneath them is firmware whose whole interface is `ecall`.
+
+⚠️ **And the artefacts are run on the real machines, not inspected.** Continuous
+integration builds all three hosted targets on Linux and executes each on the
+system it was built for; `mcpp`'s own `openkal-cross` workflow builds them from
+three hosts and runs all nine combinations. Every difference this package had to
+find on Mach-O and PE — the loader-bootstrapped thread-local, the unwinder's
+search for its own tables, the personality routine, the visibility of weak
+definitions — **links successfully and fails at run time**.
+
 ## Not supported
 
 - **the sanitizers.** compiler-rt's sanitizers depend on a host's internals —
@@ -131,4 +157,19 @@ A package that had only ever been built would have shipped that.
 ## Licence
 
 The port is Apache-2.0. The vendored sources under `llvm/` are Apache-2.0 with
-LLVM exceptions and are unchanged; `llvm/LICENSE.TXT` is theirs.
+LLVM exceptions; `llvm/LICENSE.TXT` is theirs.
+
+⚠️ They are **almost** unchanged, and the exceptions are enumerated rather than
+described. `llvm/PATCHES.md` lists every one — five regions in four files, each
+between `// ─── openkal ─── BEGIN` and `// ─── openkal ─── END`, countable with
+
+```sh
+grep -rn "openkal ─── BEGIN" llvm/
+```
+
+Each replacement fits one sentence: *upstream asks here which operating system
+this is, and the real answer is openkal's `<interface>`.* A change that does not
+fit it is not made. The larger half of that document is the list of places that
+did **not** need changing — twelve of the nineteen `#include <windows.h>` sites
+resolve themselves once the predicate is answered correctly, because libc++'s
+POSIX branch was already reaching openkal through musl.
