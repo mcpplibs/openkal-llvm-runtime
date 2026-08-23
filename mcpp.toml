@@ -1,7 +1,7 @@
 [package]
 namespace   = "mcpplibs"
 name        = "openkal-llvm-runtime"
-version     = "0.1.0"
+version     = "0.1.1"
 description = "LLVM's C++ runtime libraries — libc++, libc++abi and libunwind — configured for openkal-musl rather than for a host C library."
 license     = "Apache-2.0"
 authors     = ["mcpplibs"]
@@ -69,7 +69,7 @@ std-module-flags = [
 # returning to --- whether an implementation has been configured FOR this
 # target, not whether its headers can be found.
 [dependencies]
-openkal-musl = { git = "https://github.com/mcpplibs/openkal-musl", branch = "feat/openkal-closure" }
+openkal-musl = "0.3.3"
 
 [build]
 cxx_standard = "c++23"
