@@ -1,26 +1,30 @@
 import mcpp;
-#include <cstring>
 
-int main() {
-    // ⭐⭐ THE LINKER SCRIPT IS FOR THE MACHINE WITH NO OPERATING SYSTEM, AND
-    // ONLY FOR IT. THAT CONDITION IS WHAT MAKES THIS ONE PROJECT INSTEAD OF TWO.
-    //
-    // The claim the design document makes is that a program above openkal is
-    // built without regard to which implementation is beneath — same source,
-    // different machine, nothing edited. A directory that could only be built
-    // one way would illustrate that claim rather than demonstrate it.
-    //
-    // So: `mcpp run` puts this on the host over openkal-linux, and
-    // `mcpp run --target riscv64-none-elf` puts the SAME source on riscv64 over
-    // OpenSBI. Both print the same four lines. The only thing that differs is
-    // the memory layout, which is a statement about the machine — and it is
-    // stated here, once, behind the condition that says which machine.
-    if (std::strcmp(mcpp::target_os(), "none") == 0) {
-        // A relative path in `ldflags` would resolve against the build
-        // directory; `link-script` resolves against the package root.
-        mcpp::link_script("link.ld");
-    }
-    mcpp::rerun_if_changed("link.ld");
-    mcpp::rerun_if_env_changed("MCPP_TARGET_OS");
-    return 0;
-}
+// ⚠️ THIS FILE STATES NOTHING, AND ITS EMPTINESS IS WHAT THE EXAMPLE IS ABOUT.
+//
+// Until 2026-08-23 it carried a linker script for the machine with no operating
+// system — where OpenSBI hands control over, how much stack, where the heap is
+// — behind a condition on the target. The condition was the honest part: those
+// are statements about a MACHINE and not about this program.
+//
+// ⭐ Which is exactly why they do not belong here either. `openkal-opensbi` is
+// the package that knows that machine, and it supplies the map the same way it
+// supplies its `kal_*` definitions: through its own build program, reaching
+// every consumer's link line. A program adds nothing and gets a layout that
+// works, and the claim this directory makes — same source, different machine,
+// nothing edited — becomes true of the build files as well as of the source.
+//
+// ⚠️ Measured while both copies existed, because a board fact reaches its
+// consumers TRANSITIVELY and this example is a consumer:
+//
+//     ld.lld: error: section .eh_frame file range overlaps with
+//                    .debug_str_offsets
+//     ld.lld: error: section .debug_str file range overlaps with .eh_frame_hdr
+//
+// Two scripts, both applied, and a diagnostic that says nothing about there
+// being two. ⇒ A program that also states a board fact states it twice.
+//
+// The file remains rather than being deleted: a build program is how this
+// example would say anything at all, and its absence would read as "this was
+// never considered" rather than "there is nothing to say".
+int main() { return 0; }
