@@ -270,6 +270,44 @@ sources = [
 # dependency compiled one way cannot be imported by a unit compiled the other.
 # Stated here it covers this package; a consumer states it too, and mcpp
 # deciding it from the capability is the shape that would remove the repetition.
+# ⭐⭐ THE COMPILER'S OWN RUNTIME, ON THE ONE TARGET THAT WAS STILL BORROWING
+# ANOTHER COMPILER'S.
+#
+# macOS, Windows and bare metal all take the routines a compiler emits calls to
+# — 128-bit division, a stack probe, a complex multiply — from compiler-rt,
+# which is in this package. Linux did not: `openkal-musl` named `-lgcc`, and on
+# a Linux host that resolves against a payload that happens to be installed.
+#
+# ⚠️ Measured 2026-08-23, a macOS host cross-building for `x86_64-linux-gnu`
+# over openkal:
+#
+#     ld.lld: error: unable to find library -lgcc
+#
+# There is no libgcc for a Linux target on that machine, and there is no reason
+# there should be: the compiler is clang and its runtime is compiler-rt. The
+# flag only ever worked because the host and the target agreed.
+#
+# ⚠️ Building these alongside `-lgcc` is not a duplicate-definition hazard. An
+# archive contributes only what is still undefined, so if ours are linked first
+# the archive is never consulted for them.
+[target.'cfg(os = "linux")'.build]
+sources = [
+  "llvm/compiler-rt/lib/builtins/*.c",
+  "!llvm/compiler-rt/lib/builtins/atomic*.c",
+  "!llvm/compiler-rt/lib/builtins/clear_cache.c",
+  "!llvm/compiler-rt/lib/builtins/emutls.c",
+  "!llvm/compiler-rt/lib/builtins/enable_execute_stack.c",
+  "!llvm/compiler-rt/lib/builtins/eprintf.c",
+  "!llvm/compiler-rt/lib/builtins/gcc_personality_v0.c",
+  "!llvm/compiler-rt/lib/builtins/crtbegin.c",
+  "!llvm/compiler-rt/lib/builtins/crtend.c",
+  # ⚠️ Darwin's own; it asks Apple's SDK which OS version is running.
+  "!llvm/compiler-rt/lib/builtins/os_version_check.c",
+  # ⚠️ libc++ carries its OWN copy of the 128-bit multiply-overflow helper.
+  # Supplying compiler-rt's makes them a pair: `duplicate symbol: __muloti4`.
+  "!llvm/libcxx/src/filesystem/int128_builtins.cpp",
+]
+
 [target.'cfg(windows)'.build]
 # ⚠️ `-fdwarf-exceptions` WAS HERE AND IS NOT ANY MORE, for the reason the macOS
 # block above records: it decides what a `throw` COMPILES INTO, so it is true of
