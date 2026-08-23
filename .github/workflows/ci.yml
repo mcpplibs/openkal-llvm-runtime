@@ -289,7 +289,23 @@ jobs:
           # not ad-hoc sign it", which is a different repair from "the program
           # crashed".
           codesign -dv art/openkal-same-source 2>&1 | grep -q 'adhoc\|Signature'
-          ./art/openkal-same-source 2>&1 | tee out.log
+          # ⚠️ A CRASH IS DIAGNOSED HERE RATHER THAN GUESSED AT LATER. This is
+          # the first time an artefact of this stack has run on this system, and
+          # the interesting failures — the entry point's assumptions about what
+          # the kernel hands it, the thread pointer, the two borrowed names —
+          # all look identical from outside: `Segmentation fault: 11`.
+          # One CI cycle that prints a backtrace is worth several that do not.
+          if ! ./art/openkal-same-source > out.log 2>&1; then
+            echo "--- it did not run; what the debugger saw ---"
+            lldb --batch -o run -o 'bt all' -o 'image list' \
+                 -- ./art/openkal-same-source 2>&1 | tail -60 || true
+            echo "--- the image's own dependencies ---"
+            otool -L art/openkal-same-source || true
+            otool -l art/openkal-same-source | grep -A4 LC_MAIN || true
+            cat out.log
+            exit 1
+          fi
+          cat out.log
           grep -q 'sorted: 2 4 7'   out.log
           grep -q 'caught: 42'      out.log
           grep -q 'unwound: true'   out.log
@@ -355,6 +371,10 @@ jobs:
             sleep 60
           done
           mcpp self config --mirror GLOBAL
+          # ⚠️ INSTALL, THEN SELECT. `toolchain default` names a toolchain and
+          # does not fetch one, so selecting an absent payload fails with
+          # `llvm@22.1.8 is not installed` — measured on both rows of this job.
+          mcpp toolchain install llvm 22.1.8
           mcpp toolchain default 'llvm@22.1.8'
 
       # ⚠️ Same temporary step as the Linux job: the decisions this exercises are
