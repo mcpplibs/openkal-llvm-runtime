@@ -482,6 +482,24 @@ cxxflags = [
   # and dladdr were moved up: it is a fact about openkal rather than about a
   # target, and leaving it below means the next object format rediscovers it.
   "-DOPENKAL=1",
+  # ⭐⭐ NOTHING FROM THE MACHINE. This package states every header it needs in
+  # `include_dirs`; anything the compiler finds on its own is a header of
+  # whatever system is doing the building, and taking one makes the build depend
+  # on where it happens.
+  #
+  # ⚠️ Measured 2026-08-23, building this package ON macOS with the target side
+  # from the graph — the flag was on `std-module-flags` and nowhere else:
+  #
+  #     libcxx/src/chrono.cpp:59 → …/MacOSX.sdk/usr/include/mach/mach_time.h:55:
+  #       error: unknown type name '__MAC_10_10'                     (× 19)
+  #
+  # `chrono.cpp` guards that include with `__has_include`, which is a question
+  # about the MACHINE. On Linux the answer is no and the file compiles; on macOS
+  # the SDK is right there, the answer is yes, and the header arrives without
+  # the prerequisites its own SDK would have supplied. ⇒ The include is optional
+  # to libc++ and the paths this build takes do not use it; the defect is that
+  # the question could be asked at all.
+  "-nostdinc",
   # ⭐ WHETHER THE IMPLEMENTATION BENEATH PROVIDES `openkal.task`.
   #
   # `llvm/libcxx/src/atomic.cpp` asks openkal for the suspension primitive
@@ -536,6 +554,24 @@ cflags = [
   # `emutls.c` asks the same "which OS is beneath" question that libunwind's
   # headers do. One name for one fact; see the cxxflags entry for what it means.
   "-DOPENKAL=1",
+  # ⭐⭐ NOTHING FROM THE MACHINE. This package states every header it needs in
+  # `include_dirs`; anything the compiler finds on its own is a header of
+  # whatever system is doing the building, and taking one makes the build depend
+  # on where it happens.
+  #
+  # ⚠️ Measured 2026-08-23, building this package ON macOS with the target side
+  # from the graph — the flag was on `std-module-flags` and nowhere else:
+  #
+  #     libcxx/src/chrono.cpp:59 → …/MacOSX.sdk/usr/include/mach/mach_time.h:55:
+  #       error: unknown type name '__MAC_10_10'                     (× 19)
+  #
+  # `chrono.cpp` guards that include with `__has_include`, which is a question
+  # about the MACHINE. On Linux the answer is no and the file compiles; on macOS
+  # the SDK is right there, the answer is yes, and the header arrives without
+  # the prerequisites its own SDK would have supplied. ⇒ The include is optional
+  # to libc++ and the paths this build takes do not use it; the defect is that
+  # the question could be asked at all.
+  "-nostdinc",
   "-DNDEBUG",
   "-w",
   "-ffunction-sections",
