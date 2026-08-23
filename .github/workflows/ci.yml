@@ -296,9 +296,20 @@ jobs:
           # all look identical from outside: `Segmentation fault: 11`.
           # One CI cycle that prints a backtrace is worth several that do not.
           if ! ./art/openkal-same-source > out.log 2>&1; then
+            echo "--- how far the loader got ---"
+            DYLD_PRINT_INITIALIZERS=1 DYLD_PRINT_APIS=1 \
+              ./art/openkal-same-source 2>&1 | tail -25 || true
             echo "--- it did not run; what the debugger saw ---"
-            lldb --batch -o run -o 'bt all' -o 'image list' \
-                 -- ./art/openkal-same-source 2>&1 | tail -60 || true
+            # ⭐ `lr` IS THE DATUM. A jump to address 0 leaves no frame to
+            # unwind, so `bt` says only "frame #0: 0x0" — which is the symptom
+            # restated. The link register still holds the return address of
+            # whoever made that call, and `image lookup` turns it into a name.
+            lldb --batch \
+                 -o run \
+                 -o 'register read pc lr sp fp x8 x9 x16 x17' \
+                 -o 'image lookup --address $lr' \
+                 -o 'bt all' \
+                 -- ./art/openkal-same-source 2>&1 | tail -70 || true
             echo "--- the image's own dependencies ---"
             otool -L art/openkal-same-source || true
             otool -l art/openkal-same-source | grep -A4 LC_MAIN || true
