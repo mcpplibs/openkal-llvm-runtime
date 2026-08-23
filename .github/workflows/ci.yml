@@ -297,18 +297,28 @@ jobs:
           # One CI cycle that prints a backtrace is worth several that do not.
           if ! ./art/openkal-same-source > out.log 2>&1; then
             echo "--- how far the loader got ---"
-            DYLD_PRINT_INITIALIZERS=1 DYLD_PRINT_APIS=1 \
-              ./art/openkal-same-source 2>&1 | tail -25 || true
+            # ⚠️ To a file, then read. Piping into `tail` interleaves dyld's
+            # output with the shell's own report of the signal, and the last
+            # lines — the ones that say which initializer was running — are the
+            # ones that get lost.
+            DYLD_PRINT_INITIALIZERS=1 ./art/openkal-same-source > dyld.log 2>&1 || true
+            tail -40 dyld.log
             echo "--- it did not run; what the debugger saw ---"
             # ⭐ `lr` IS THE DATUM. A jump to address 0 leaves no frame to
             # unwind, so `bt` says only "frame #0: 0x0" — which is the symptom
             # restated. The link register still holds the return address of
             # whoever made that call, and `image lookup` turns it into a name.
+            # ⚠️ `-k` AND NOT `-o`. In `--batch` lldb abandons the remaining
+            # `-o` commands after the first one that errors, and reading
+            # register state at a PC of 0 errors — so the three commands that
+            # would have said something never ran. `-k` is the list lldb
+            # executes WHEN THE PROCESS CRASHES, which is the case at hand.
             lldb --batch \
+                 -k 'register read pc lr sp fp x8 x9 x16 x17' \
+                 -k 'image lookup --address $lr' \
+                 -k 'thread backtrace all' \
+                 -k 'image list -o -f' \
                  -o run \
-                 -o 'register read pc lr sp fp x8 x9 x16 x17' \
-                 -o 'image lookup --address $lr' \
-                 -o 'bt all' \
                  -- ./art/openkal-same-source 2>&1 | tail -70 || true
             echo "--- the image's own dependencies ---"
             otool -L art/openkal-same-source || true
