@@ -15,7 +15,10 @@ repo        = "https://github.com/mcpplibs/openkal-llvm-runtime"
 # --- which was every such target until this package. The fact that one is
 # present is a property of the dependency graph, not of the triple, so it is
 # declared here and read there.
-provides = ["hosted-standard-library"]
+# The older spelling is kept beside the current one so that an engine
+# predating the layer vocabulary still recognises this package. Both name the
+# same layer; a newer engine reads the second and ignores the first.
+provides = ["hosted-standard-library", "mcpp:c++-abi=libc++"]
 
 # Where this package's `std' module source is, and what it needs.
 #
