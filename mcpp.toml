@@ -1,0 +1,623 @@
+[package]
+namespace   = "mcpplibs"
+name        = "openkal-llvm-runtime"
+version     = "0.1.0"
+description = "LLVM's C++ runtime libraries — libc++, libc++abi and libunwind — configured for openkal-musl rather than for a host C library."
+license     = "Apache-2.0"
+authors     = ["mcpplibs"]
+repo        = "https://github.com/mcpplibs/openkal-llvm-runtime"
+
+# What this package is, stated as a capability rather than left to be inferred
+# from its name.
+#
+# The build tool refuses `import std;' on a target with no operating system,
+# and the refusal is right whenever nothing supplies a hosted standard library
+# --- which was every such target until this package. The fact that one is
+# present is a property of the dependency graph, not of the triple, so it is
+# declared here and read there.
+# The older spelling is kept beside the current one so that an engine
+# predating the layer vocabulary still recognises this package. Both name the
+# same layer; a newer engine reads the second and ignores the first.
+provides = ["hosted-standard-library", "mcpp:c++-abi=libc++"]
+
+# Where this package's `std' module source is, and what it needs.
+#
+# The build tool otherwise asks the compiler (`-print-library-module-manifest-path'),
+# which is the right question when the standard library is the compiler's own
+# and the wrong one here: this source was configured for a target the compiler
+# knows nothing about, and its configuration is in llvm-generated/ rather than
+# beside the compiler.
+std-module = "llvm-generated/std.cppm"
+# ⚠️ AND THE COMPAT MODULE, BECAUSE IT IS THE SAME LIBRARY.
+#
+# `std.compat` re-exports the C library's names into the global namespace over
+# the SAME libc++. Naming only the first leaves the second resolving to the
+# toolchain's copy, and the two are then a mixed pair — which does not fail
+# where they are chosen but inside the toolchain's headers, against a
+# configuration never generated for this target:
+#
+#   …/share/libc++/v1/std.compat.cppm → __config:13 '__config_site' not found
+std-compat-module = "llvm-generated/std.compat.cppm"
+std-module-flags = [
+  # ⚠️ --no-default-config, and it is not tidiness.
+  #
+  # The toolchain payload ships a clang++.cfg that names a host C library's
+  # headers unconditionally. For an ordinary translation unit that is right and
+  # invisible; for this one it puts a C library that is not the one beneath this
+  # package first, and the module fails compiling <wchar.h> with names that
+  # library expects the host compiler to have supplied. Measured.
+  "--no-default-config",
+  "-nostdinc",
+  "-nostdinc++",
+  # libc++'s locale layer reaches for names musl declares only under this macro
+  # (vasprintf, strtof_l and their relatives). LLVM's own runtimes build defines
+  # it for the same reason. It is stated here rather than left to the target
+  # block, because that block describes how this package's own sources are
+  # compiled and the module is compiled separately.
+  "-D_GNU_SOURCE",
+  # The module source is one file that includes ninety-odd fragments by
+  # relative name. They are upstream's and unmodified, so they stay where
+  # upstream put them and the search path names that directory rather than the
+  # fragments being copied next to the configured source.
+  "-I", "llvm/libcxx/modules",
+]
+
+# The C library beneath. A C++ standard library is not portable in the sense a
+# program is: it is configured for one C library and compiled against that
+# library's headers, and the configuration is what this package supplies. The
+# criterion the whole package exists to satisfy is the one openkal keeps
+# returning to --- whether an implementation has been configured FOR this
+# target, not whether its headers can be found.
+[dependencies]
+openkal-musl = { git = "https://github.com/mcpplibs/openkal-musl", branch = "feat/openkal-closure" }
+
+[build]
+cxx_standard = "c++23"
+
+# ⚠️ WHAT IS VENDORED AND WHAT IS NOT.
+#
+# Four subtrees of llvm-project at the revision the toolchain itself was built
+# from (llvm/UPSTREAM-REV). The compiler and the linker are NOT vendored and are
+# not changed: they take a target triple and emit for it, and openkal changes no
+# architecture and no object format. What has to be configured is what travels
+# with the program, and that is these.
+sources = [
+  # The unwinder. Its own sources decide by preprocessor which architecture and
+  # which personality routine to build, so the whole directory is given and the
+  # selection happens inside.
+  "llvm/libunwind/src/libunwind.cpp",
+  "llvm/libunwind/src/Unwind-EHABI.cpp",
+  "llvm/libunwind/src/UnwindLevel1.c",
+  "llvm/libunwind/src/UnwindLevel1-gcc-ext.c",
+  "llvm/libunwind/src/Unwind-sjlj.c",
+  "llvm/libunwind/src/UnwindRegistersRestore.S",
+  "llvm/libunwind/src/UnwindRegistersSave.S",
+
+  # The Itanium C++ ABI: exception objects, the demangler, guard variables,
+  # dynamic casts, and the terminate handler.
+  "llvm/libcxxabi/src/*.cpp",
+  "!llvm/libcxxabi/src/cxa_noexception.cpp",
+  # ⭐⭐ THE SAME CODE TWICE, AND IT SAYS SO ITSELF. `libcxx/src/new.cpp`:
+  #
+  #     "The code below is copied as-is into libc++abi's
+  #      libcxxabi/src/stdlib_new_delete.cpp file. The version in this file is
+  #      the canonical one."
+  #
+  # Upstream builds the two as separate libraries and only one is ever linked.
+  # This package builds them into ONE artefact, so both definitions arrive on
+  # the same link line — every `operator new` and `operator delete`, twice.
+  #
+  # ⚠️ AND IT WAS INVISIBLE ON THREE TARGETS OUT OF FOUR. Both copies are weak,
+  # and on ELF and Mach-O a duplicate weak definition is what weak MEANS: the
+  # linker picks one and says nothing. COFF's weak externals carry the comdat
+  # they default to, so the same two definitions became 30 errors:
+  #
+  #     ld.lld: error: duplicate symbol:
+  #       .weak._Znwy.default._Z22__throw_bad_alloc_shimv
+  #     >>> libcxxabi/src/stdlib_new_delete.cpp:234
+  #     >>> libcxx/src/new.o
+  #
+  # ⇒ Excluded package-wide rather than under `cfg(windows)`: the third format
+  # did not create the duplication, it reported it. Taking the canonical copy on
+  # every target is what makes the four builds the same build.
+  "!llvm/libcxxabi/src/stdlib_new_delete.cpp",
+
+  # The standard library.
+  "llvm/libcxx/src/*.cpp",
+  # openkal has no source of entropy and this port does not invent one, so the
+  # configuration sets _LIBCPP_HAS_RANDOM_DEVICE to 0 --- and the source that
+  # defines std::random_device must then not be compiled, which is what libc++'s
+  # own build does with the same switch. A program that names random_device is
+  # told by the linker, which is clause 6.1's report.
+  "!llvm/libcxx/src/random.cpp",
+  "llvm/libcxx/src/filesystem/*.cpp",
+  "llvm/libcxx/src/ryu/*.cpp",
+  "llvm/libcxx/src/support/runtime/*.cpp",
+
+  # What openkal supplies that a host C library would have.
+  "port/src/*.cpp",
+]
+
+# The order is load-bearing. libc++'s own headers must precede any C library's,
+# which is a requirement libc++ states in as many words --- <cctype> stops the
+# build if it reaches a <ctype.h> that is not its own. The generated
+# configuration precedes both, because every header of the library includes it.
+include_dirs = [
+  # ⭐ THE OVERLAY, FIRST. Every difference from vendored libc++ lives in one
+  # directory that shadows it, exactly as openkal-musl's `port/` shadows
+  # vendored musl — so the vendored tree stays byte-identical to upstream and
+  # `git diff` against a fresh checkout of it is empty. port/include's own
+  # headers say what each one is for and why it could not be a `__config_site`
+  # switch instead.
+  "port/include",
+  "llvm/libcxx/include",
+  "llvm/libcxx/src",
+  "llvm/libcxxabi/include",
+  "llvm/libcxxabi/src",
+  "llvm/libunwind/include",
+  "llvm/libunwind/src",
+  # libc++ reuses llvm-libc's floating-point utilities; the two are one project
+  # and the headers are shared rather than copied.
+  # ⚠️ `llvm/libc' ONLY. Adding `llvm/libc/shared' as well puts llvm-libc's own
+  # <math.h> ahead of the C library's, and llvm-libc's overlay-mode header then
+  # includes itself instead of musl --- so `math_errhandling', which musl
+  # defines unconditionally, is undeclared. The includes are written
+  # "shared/fp_bits.h" relative to libc/, so one directory is what they need.
+  "llvm/libc",
+]
+
+# ⚠️ THE CONFIGURATION IS PER TARGET, AND THAT IS WHAT `llvm-generated' IS FOR.
+#
+# A hosted target lets libc++ work out for itself that the thread API is
+# pthread's, because it recognises the system. A target with no operating system
+# is not recognised, and libc++ stops with `No thread API' rather than guessing
+# --- correctly, because guessing is what a configure step exists to avoid.
+#
+# So the freestanding configuration states it, and states the two facilities
+# that environment does not have. Nothing else differs: the C library beneath is
+# the same one.
+# ⚠️ THE COMPILER'S OWN RUNTIME, ON EVERY TARGET WHOSE DRIVER SELECTION WE
+# REPLACED — WHICH IS EVERY CROSS, AND NOT THE HOST.
+#
+# `__udivti3` and its relatives are what the compiler decided to call; no source
+# here mentions them. A native link gets them from the toolchain's own
+# `libclang_rt.builtins`, which the driver adds. A cross does not — the target
+# side comes from this graph — so this package has to supply them.
+#
+# ⚠️ AND IT MUST NOT SUPPLY THEM NATIVELY. Measured 2026-08-23: adding them to
+# the package-wide source list broke the HOST build with duplicate definitions
+# of `__muloti4` and its neighbours, against the archive the driver had already
+# linked. The fact is "the driver's runtime selection was replaced", and the
+# nearest thing a manifest can say today is "this target is not the host of this
+# repository's builds" — stated per format rather than once, which is the cost
+# of the manifest not being able to say it directly.
+[target.'cfg(os = "macos")'.build]
+# ⚠️ AND compiler-rt's emutls, WHICH THE EXCLUSION LIST OTHERWISE DROPS.
+#
+# The package-wide exclusions leave `emutls.c` out because it needs an
+# environment — pthread keys and an allocator. This target has both, from
+# openkal-musl, and `-femulated-tls` below makes every thread-local access call
+# into it. Measured: without it, `undefined symbol: __emutls_get_address`.
+#
+# ⭐ EMULATED THREAD-LOCAL STORAGE, WHICH THIS OBJECT FORMAT NEEDS AND openkal
+# ALREADY VALIDATED.
+#
+# Mach-O reaches a `thread_local` through a descriptor the dynamic loader
+# bootstraps — `_tlv_bootstrap`. There is no dynamic loader here, so the symbol
+# is undefined and the program does not link. `-femulated-tls` makes the
+# compiler route every access through `__emutls_get_address` instead, which is
+# an ordinary function call resolved by compiler-rt against a key the C library
+# owns.
+#
+# ⚠️ Measured 2026-08-23: `undefined symbol: _tlv_bootstrap`, after everything
+# else on this target linked. And the mechanism is not new — the ecosystem
+# design's experiment A validated exactly this route (32 assertions, 0
+# failures); ⚠️ that experiment also recorded that the flag is LLVM-only, which
+# is why it can be stated here at all: this target's compiler is clang by
+# construction.
+# ⚠️ AND THE FLAG ITSELF IS NO LONGER STATED HERE. It was
+# `cxxflags = ["-femulated-tls"]`, which reached this package's objects and
+# stopped — the consumer's own `thread_local` would have been compiled the other
+# way, and the two would have linked. mcpp derives it now for every unit in the
+# graph, from the fact this package's `std-module` establishes
+# (`targetCxxRuntime`) plus the target's object format. The paragraphs above are
+# kept because they are the measurement that determined the rule.
+# ⚠️ libc++ carries its OWN copy of the 128-bit multiply-overflow helper, for
+# platforms where compiler-rt is not linked. Supplying compiler-rt's makes them
+# a pair: `duplicate symbol: __muloti4`. The freestanding block never hit it
+# because it excludes the whole filesystem directory for a different reason.
+sources = [
+  "!llvm/libcxx/src/filesystem/int128_builtins.cpp",
+  "llvm/compiler-rt/lib/builtins/*.c",
+  "llvm/compiler-rt/lib/builtins/emutls.c",
+  "!llvm/compiler-rt/lib/builtins/atomic*.c",
+  "!llvm/compiler-rt/lib/builtins/clear_cache.c",
+  # ⚠️ `emutls.c` IS NOT EXCLUDED HERE, AND THE ORDER DOES NOT DECIDE THAT —
+  # AN EXCLUSION ANYWHERE IN A LIST BEATS AN INCLUSION ANYWHERE ELSE IN IT.
+  # Measured: adding the include above while leaving the exclusion below it
+  # produced no object and `undefined symbol: __emutls_get_address`. So the
+  # line is simply absent from this target rather than re-added.
+  "!llvm/compiler-rt/lib/builtins/enable_execute_stack.c",
+  "!llvm/compiler-rt/lib/builtins/eprintf.c",
+  "!llvm/compiler-rt/lib/builtins/gcc_personality_v0.c",
+  "!llvm/compiler-rt/lib/builtins/crtbegin.c",
+  "!llvm/compiler-rt/lib/builtins/crtend.c",
+  # ⚠️ Darwin's own: it asks Apple's SDK which OS version is running, so that a
+  # weakly-linked symbol can be probed. openkal is not that OS, and nothing here
+  # weak-links against it. (`apple_versioning.c` is already outside the
+  # architecture's list; this one is inside it and still Darwin's.)
+  "!llvm/compiler-rt/lib/builtins/os_version_check.c",
+  "!llvm/compiler-rt/lib/builtins/*xf*.c",
+  "!llvm/compiler-rt/lib/builtins/*xc3.c",
+]
+
+# ⭐ THE EXCEPTION MECHANISM FOLLOWS THE UNWINDER WE SHIP, NOT THE PLATFORM'S
+# DEFAULT.
+#
+# clang targeting this triple defines `__SEH__`, because that is what mingw uses
+# on this architecture — and libunwind's own public header then reaches for
+# `<windows.h>` and `<ntverp.h>`:
+#
+#     unwind.h:22 → /usr/x86_64-w64-mingw32/include/windows.h
+#                 → crtdefs.h → corecrt.h:98 typedef redefinition
+#
+# ⚠️ That is the same class of failure as every other one on this target: a
+# vendor SDK reached because a platform macro was read as a statement about what
+# is underneath. Here the answer is a flag rather than an overlay, because the
+# question is genuinely a build decision: this program's unwinder is the one in
+# this package, and it reads DWARF tables — the same ones it reads on ELF and on
+# Mach-O.
+#
+# ⚠️ IT HAS TO REACH EVERY TRANSLATION UNIT IN THE GRAPH, for the reason
+# docs/13 records about `-fno-exceptions`: the model is recorded in a BMI, and a
+# dependency compiled one way cannot be imported by a unit compiled the other.
+# Stated here it covers this package; a consumer states it too, and mcpp
+# deciding it from the capability is the shape that would remove the repetition.
+# ⭐⭐ THE COMPILER'S OWN RUNTIME, ON THE ONE TARGET THAT WAS STILL BORROWING
+# ANOTHER COMPILER'S.
+#
+# macOS, Windows and bare metal all take the routines a compiler emits calls to
+# — 128-bit division, a stack probe, a complex multiply — from compiler-rt,
+# which is in this package. Linux did not: `openkal-musl` named `-lgcc`, and on
+# a Linux host that resolves against a payload that happens to be installed.
+#
+# ⚠️ Measured 2026-08-23, a macOS host cross-building for `x86_64-linux-gnu`
+# over openkal:
+#
+#     ld.lld: error: unable to find library -lgcc
+#
+# There is no libgcc for a Linux target on that machine, and there is no reason
+# there should be: the compiler is clang and its runtime is compiler-rt. The
+# flag only ever worked because the host and the target agreed.
+#
+# ⚠️ Building these alongside `-lgcc` is not a duplicate-definition hazard. An
+# archive contributes only what is still undefined, so if ours are linked first
+# the archive is never consulted for them.
+[target.'cfg(os = "linux")'.build]
+sources = [
+  "llvm/compiler-rt/lib/builtins/*.c",
+  "!llvm/compiler-rt/lib/builtins/atomic*.c",
+  "!llvm/compiler-rt/lib/builtins/clear_cache.c",
+  "!llvm/compiler-rt/lib/builtins/emutls.c",
+  "!llvm/compiler-rt/lib/builtins/enable_execute_stack.c",
+  "!llvm/compiler-rt/lib/builtins/eprintf.c",
+  "!llvm/compiler-rt/lib/builtins/gcc_personality_v0.c",
+  "!llvm/compiler-rt/lib/builtins/crtbegin.c",
+  "!llvm/compiler-rt/lib/builtins/crtend.c",
+  # ⚠️ Darwin's own; it asks Apple's SDK which OS version is running.
+  "!llvm/compiler-rt/lib/builtins/os_version_check.c",
+  # ⚠️ libc++ carries its OWN copy of the 128-bit multiply-overflow helper.
+  # Supplying compiler-rt's makes them a pair: `duplicate symbol: __muloti4`.
+  "!llvm/libcxx/src/filesystem/int128_builtins.cpp",
+]
+
+[target.'cfg(windows)'.build]
+# ⚠️ `-fdwarf-exceptions` WAS HERE AND IS NOT ANY MORE, for the reason the macOS
+# block above records: it decides what a `throw` COMPILES INTO, so it is true of
+# the graph rather than of this package. mcpp derives it; see
+# `graph_runtime_compile_flags`.
+sources = [
+  "!llvm/libcxx/src/filesystem/int128_builtins.cpp",
+  "llvm/compiler-rt/lib/builtins/*.c",
+  # ⭐ EMULATED TLS, THE THIRD FORMAT TO NEED IT AND FOR THE SAME REASON.
+  #
+  # Mach-O reaches a `thread_local` through `_tlv_bootstrap` and PE through
+  # `_tls_index`; both are bootstrapped by a DYNAMIC LOADER, and a self-contained
+  # openkal image has none. Measured 2026-08-23, after everything else linked:
+  #
+  #     ld.lld: error: undefined symbol: _tls_index
+  #     >>> referenced by libcxxabi/src/cxa_exception_storage.cpp:33
+  #
+  # — one `thread_local` in libc++abi, holding the current exception. The macOS
+  # block found the same wall at `_tlv_bootstrap`, which is why this line is a
+  # copy of that one rather than a new idea.
+  "llvm/compiler-rt/lib/builtins/emutls.c",
+  # ⭐ THE STACK PROBE, AND IT IS `.S` RATHER THAN `.c` — WHICH IS WHY THE GLOB
+  # ABOVE MISSES IT.
+  #
+  # The compiler emits a call to `___chkstk_ms` before a frame large enough to
+  # skip a guard page, and on this format that is a routine of the compiler's
+  # runtime rather than of the C library. compiler-rt has it, in the
+  # architecture's own directory: `x86_64/chkstk.S`.
+  #
+  # ⚠️ Measured 2026-08-22, after `-lgcc` came off `openkal-musl`'s link line for
+  # this format — that archive is GCC's, and it had been quietly supplying this
+  # to a link whose compiler is clang:
+  #
+  #     ld.lld: error: undefined symbol: ___chkstk_ms
+  #
+  # ⚠️ ONE FILE FROM THAT DIRECTORY AND NOT THE DIRECTORY. `x86_64/` also holds
+  # `floatdidf.c` and its neighbours, which the generic list above already
+  # supplies; taking the whole directory would define each of them twice.
+  "llvm/compiler-rt/lib/builtins/x86_64/chkstk.S",
+  "!llvm/compiler-rt/lib/builtins/atomic*.c",
+  "!llvm/compiler-rt/lib/builtins/clear_cache.c",
+  # ⚠️ AND THE EXCLUSION IS DELETED RATHER THAN LEFT BELOW THE INCLUSION — an
+  # exclusion anywhere in a list beats an inclusion anywhere else in it, which
+  # the macOS block records having measured (no object, and
+  # `undefined symbol: __emutls_get_address`).
+  "!llvm/compiler-rt/lib/builtins/enable_execute_stack.c",
+  "!llvm/compiler-rt/lib/builtins/eprintf.c",
+  "!llvm/compiler-rt/lib/builtins/gcc_personality_v0.c",
+  "!llvm/compiler-rt/lib/builtins/crtbegin.c",
+  "!llvm/compiler-rt/lib/builtins/crtend.c",
+  # ⚠️ Darwin's own: it asks Apple's SDK which OS version is running, so that a
+  # weakly-linked symbol can be probed. openkal is not that OS, and nothing here
+  # weak-links against it. (`apple_versioning.c` is already outside the
+  # architecture's list; this one is inside it and still Darwin's.)
+  "!llvm/compiler-rt/lib/builtins/os_version_check.c",
+  # ⚠️ THE TWO EXCLUSIONS THAT WERE HERE WERE COPIED FROM THE macOS BLOCK, AND
+  # THE FACT THEY REST ON IS NOT TRUE OF THIS TARGET.
+  #
+  # `*xf*.c` and `*xc3.c` are the x87 80-bit `long double` routines. On Apple's
+  # arm64 `long double` is `double`, so nothing can call them and building them
+  # is dead weight — which is why that block excludes them. On this target
+  # `long double` IS x87 80-bit, so the calls are real.
+  #
+  # ⚠️ Measured 2026-08-22, after `-lgcc` came off this format's link line:
+  #
+  #     ld.lld: error: undefined symbol: __mulxc3
+  #
+  # — a complex multiply on `long double`, from libc++'s `<complex>`. GCC's
+  # archive had been supplying it, and the exclusion made compiler-rt unable to.
+]
+
+[target.'cfg(not(os = "none"))'.build]
+include_dirs = ["llvm-generated/generic"]
+
+[target.'cfg(os = "none")'.build]
+include_dirs = ["llvm-generated/freestanding"]
+# Two switches that a hosted target answers by recognising the system and this
+# one cannot.
+#
+#   (dladdr and _GNU_SOURCE moved to the package-wide list above: both are
+#   facts about openkal rather than about this target, and leaving them here
+#   meant every new object format rediscovered them.)
+#   _LIBUNWIND_IS_BAREMETAL — ⭐ the unwinder finds its tables through symbols
+#   the linker script defines rather than through the program headers. Both
+#   routes exist upstream and this target must take the second: the headers are
+#   reachable only through `__ehdr_start`, which requires the ELF header to lie
+#   inside a loaded segment, which requires it to be at the lowest loaded
+#   address — and firmware jumps to the lowest loaded address, so putting the
+#   header there means executing it. Measured 2026-08-23: the image linked, the
+#   entry moved to 0x80200270, OpenSBI reported `Next Address 0x80200000`, and
+#   the machine hung executing `\x7fELF` as instructions.
+#
+#   The symbols are `__eh_frame_start` / `__eh_frame_end` (and the `_hdr_`
+#   pair), and AddressSpace.hpp carries the linker script fragment that defines
+#   them. examples/same-source/link.ld is that fragment.
+# ⚠️ `-U` then `-D`: the package-wide list above already defined it, and a
+# second `-D` of a different value is a redefinition warning rather than an
+# override.
+cxxflags = ["-D_LIBUNWIND_IS_BAREMETAL=1", "-UOPENKAL_HAS_TASK", "-DOPENKAL_HAS_TASK=0"]
+cflags   = ["-UOPENKAL_HAS_TASK", "-DOPENKAL_HAS_TASK=0"]
+# ⚠️ THE FLAG BELONGS TO THIS PACKAGE AND LANDS ON THE CONSUMER'S LINK.
+#
+# `_LIBUNWIND_IS_BAREMETAL` above makes the unwinder read `__eh_frame_hdr_start`
+# and `__eh_frame_hdr_end`, which a linker script derives from the SIZE of
+# `.eh_frame_hdr` — and that section exists only when the linker is asked for
+# it. Without the flag both symbols are zero, which libunwind reads as "no
+# index" and answers by scanning `.eh_frame` from the beginning for every frame.
+#
+# That is a correctness-preserving slowdown rather than a failure, which is
+# exactly why it is stated here: nothing would ever report it. The package that
+# chose the bare-metal unwinder is the package that knows the section is wanted.
+ldflags = ["-Wl,--eh-frame-hdr"]
+# The configuration turns filesystem off, so the sources that implement it must
+# not be compiled --- the same rule as random.cpp above, and the same one libc++'s
+# own build applies with the same switch.
+#
+# ⭐⭐ AND THE COMPILER'S OWN RUNTIME, WHICH ONLY THIS TARGET HAS TO BUILD.
+#
+# A hosted target links `libclang_rt.builtins` from the toolchain and nobody
+# notices it exists. This target has no such archive to link, and what it needs
+# from one is not exotic: on this architecture `long double` is IEEE binary128
+# and there is no hardware for it, so every one of musl's `long double`
+# functions calls a soft-float routine that the compiler emits a call to and
+# does not define.
+#
+# Measured 2026-08-23, after the C library's own link errors were gone: twenty
+# undefined names, all of the form `__addtf3`, `__letf2`, `__fixtfdi`,
+# `__udivti3`. ⚠️ Not one of them appears in any source in this repository ---
+# they are what the compiler decided to call, which is why reading the sources
+# would never have found them and why the first evidence of the gap is a link.
+#
+# So compiler-rt was already vendored for this and was not being built. The
+# selection is compiler-rt's own: its CMakeLists names GENERIC_SOURCES and
+# GENERIC_TF_SOURCES for this architecture, 146 files, and what is excluded
+# below is exactly the remainder of the directory --- taken from that list
+# rather than from a guess about which ones would compile.
+#
+# The remainder is three kinds, and none belongs here:
+#   the 80-bit type that is `long double` on x86 and is not a type here;
+#   bfloat16 conversions, which other architectures' lists take and this one
+#   does not;
+#   routines that need an environment --- atomics with a lock, flushing an
+#   instruction cache, emulated thread-local storage, `fprintf` to report an
+#   assertion, GCC's personality routine (libc++abi supplies its own), and the
+#   two halves of an initialisation array that a linker script places here.
+sources = [
+  "!llvm/libcxx/src/filesystem/*.cpp",
+  "llvm/compiler-rt/lib/builtins/*.c",
+  "!llvm/compiler-rt/lib/builtins/atomic*.c",
+  "!llvm/compiler-rt/lib/builtins/clear_cache.c",
+  "!llvm/compiler-rt/lib/builtins/emutls.c",
+  "!llvm/compiler-rt/lib/builtins/enable_execute_stack.c",
+  "!llvm/compiler-rt/lib/builtins/eprintf.c",
+  "!llvm/compiler-rt/lib/builtins/gcc_personality_v0.c",
+  "!llvm/compiler-rt/lib/builtins/crtbegin.c",
+  "!llvm/compiler-rt/lib/builtins/crtend.c",
+  # ⚠️ Darwin's own: it asks Apple's SDK which OS version is running, so that a
+  # weakly-linked symbol can be probed. openkal is not that OS, and nothing here
+  # weak-links against it. (`apple_versioning.c` is already outside the
+  # architecture's list; this one is inside it and still Darwin's.)
+  "!llvm/compiler-rt/lib/builtins/os_version_check.c",
+  "!llvm/compiler-rt/lib/builtins/*xf*.c",
+  "!llvm/compiler-rt/lib/builtins/*xc3.c",
+
+  "!llvm/compiler-rt/lib/builtins/*bf*.c",
+]
+
+[build]
+cxxflags = [
+  "-nostdinc++",
+  "-D_LIBCPP_BUILDING_LIBRARY",
+  # libunwind's own C++ sources need it too: without it the unwinder is built to
+  # be able to unwind a foreign address space, and the local one is not the path
+  # it takes. The C sources had it and the C++ ones did not, which is the kind of
+  # split a single flags list does not have.
+  "-D_LIBUNWIND_IS_NATIVE_ONLY",
+  # ⭐ NO `dladdr`, ON ANY TARGET — WHICH IS A FACT ABOUT openkal, NOT ABOUT ONE
+  # PLATFORM.
+  #
+  # libunwind uses it to put a FUNCTION NAME on a frame, which is a convenience
+  # for `_Unwind_FindEnclosingFunction` and for printing a backtrace; nothing in
+  # unwinding needs it. It reaches for it whenever the platform "has a dynamic
+  # loader", and decides that by the OS.
+  #
+  # openkal has no dynamic loader on any target: a program built this way is one
+  # image. So the answer is the same everywhere, and it is stated once here
+  # rather than per target — which is what stops the next object format from
+  # rediscovering it. ⚠️ It was in the `cfg(os = "none")` block before, and the
+  # macOS target then failed on `unknown type name 'Dl_info'` — the same fact,
+  # asked again, at a place that had not been told.
+  "-D_LIBUNWIND_USE_DLADDR=0",
+
+  # ⭐⭐ `_WIN32` SAYS WHAT THE OBJECT FORMAT IS, NOT WHAT IS BENEATH.
+  #
+  # The same correction `port/include/__config` makes for libc++, made for the
+  # unwinder — and it has to be a flag rather than an overlay because both
+  # affected files are included with quotes from a sibling `.cpp`, and a quoted
+  # include finds the includer's own directory first. `port/include` cannot
+  # shadow them; only a marked patch can. See `llvm/PATCHES.md`.
+  #
+  # Two questions become one answer:
+  #
+  #   AddressSpace.hpp  where are this image's unwind tables?
+  #                     → the image knows: `__ImageBase` and the section table,
+  #                       no `EnumProcessModules`, no `<windows.h>`
+  #   RWMutex.hpp       what read-write lock does this platform have?
+  #                     → pthreads, i.e. musl, i.e. `kal_task_wait`
+  #
+  # ⚠️ Package-wide and not under `cfg(windows)`, for the reason `_GNU_SOURCE`
+  # and dladdr were moved up: it is a fact about openkal rather than about a
+  # target, and leaving it below means the next object format rediscovers it.
+  "-DOPENKAL=1",
+  # ⭐⭐ NOTHING FROM THE MACHINE. This package states every header it needs in
+  # `include_dirs`; anything the compiler finds on its own is a header of
+  # whatever system is doing the building, and taking one makes the build depend
+  # on where it happens.
+  #
+  # ⚠️ Measured 2026-08-23, building this package ON macOS with the target side
+  # from the graph — the flag was on `std-module-flags` and nowhere else:
+  #
+  #     libcxx/src/chrono.cpp:59 → …/MacOSX.sdk/usr/include/mach/mach_time.h:55:
+  #       error: unknown type name '__MAC_10_10'                     (× 19)
+  #
+  # `chrono.cpp` guards that include with `__has_include`, which is a question
+  # about the MACHINE. On Linux the answer is no and the file compiles; on macOS
+  # the SDK is right there, the answer is yes, and the header arrives without
+  # the prerequisites its own SDK would have supplied. ⇒ The include is optional
+  # to libc++ and the paths this build takes do not use it; the defect is that
+  # the question could be asked at all.
+  "-nostdinc",
+  # ⭐ WHETHER THE IMPLEMENTATION BENEATH PROVIDES `openkal.task`.
+  #
+  # `llvm/libcxx/src/atomic.cpp` asks openkal for the suspension primitive
+  # rather than asking an operating system — see llvm/PATCHES.md. An
+  # implementation with a single execution context has none to offer, and
+  # openkal expresses that by the interface being absent, so the C++ runtime has
+  # to know before it is compiled.
+  #
+  # ⚠️ THE SAME FACT openkal-musl STATES AS `OKM_HAS_TASK`. Two consumers, two
+  # declarations, because a manifest cannot yet read what an implementation
+  # provides. Cleared for `cfg(os = "none")` below, exactly as musl's is.
+  "-DOPENKAL_HAS_TASK=1",
+  # ⭐ musl's non-standard names live behind this, and they are not optional for
+  # libc++: the locale backend calls `vasprintf`, `strtof_l`, `strtod_l`,
+  # `strtold_l`, and libc++abi's guard reaches `syscall`. All of them are musl's
+  # to declare, and musl declares them here.
+  #
+  # ⚠️ It was in the `cfg(os = "none")` block, where it happened to be needed
+  # first. Measured on the macOS cross: `no member named 'strtof_l' in the
+  # global namespace`, from a header the freestanding block never applied to.
+  # The fact is about the C LIBRARY, so it is stated once for the package.
+  "-D_GNU_SOURCE",
+  "-D_LIBCXXABI_BUILDING_LIBRARY",
+  "-D_LIBCPP_DISABLE_VISIBILITY_ANNOTATIONS",
+  "-D_LIBCXXABI_DISABLE_VISIBILITY_ANNOTATIONS",
+  "-DLIBCXX_BUILDING_LIBCXXABI",
+  # libc++abi decides which unwinder API it is talking to. Without this it
+  # assumes the GNU one.
+  "-D_LIBCXXABI_USE_LLVM_UNWINDER=1",
+  "-DLIBCXXABI_USE_LLVM_UNWINDER=1",
+  "-DNDEBUG",
+  # libc++abi IMPLEMENTS exceptions and run-time type information; it cannot be
+  # compiled without them, and a freestanding target turns both off for the whole
+  # graph (mcpp docs/13 records why: a BMI carries the setting, so a dependency
+  # compiled with exceptions cannot be imported by a unit without them). The
+  # target's flags precede a package's, so stating both here is what restores
+  # them --- for this package, which is the one that supplies them, and for
+  # nothing else.
+  "-fexceptions",
+  "-frtti",
+  "-funwind-tables",
+  "-w",
+  # As with the C library beneath: a program links what it reaches and nothing
+  # else, which an archive would have given and a set of objects does not.
+  "-ffunction-sections",
+  "-fdata-sections",
+]
+
+cflags = [
+  "-D_LIBUNWIND_IS_NATIVE_ONLY",
+  # ⚠️ AND ON THE C SIDE TOO, WHICH IS NOT A DUPLICATE — `compiler-rt` is C, and
+  # `emutls.c` asks the same "which OS is beneath" question that libunwind's
+  # headers do. One name for one fact; see the cxxflags entry for what it means.
+  "-DOPENKAL=1",
+  # ⭐⭐ NOTHING FROM THE MACHINE. This package states every header it needs in
+  # `include_dirs`; anything the compiler finds on its own is a header of
+  # whatever system is doing the building, and taking one makes the build depend
+  # on where it happens.
+  #
+  # ⚠️ Measured 2026-08-23, building this package ON macOS with the target side
+  # from the graph — the flag was on `std-module-flags` and nowhere else:
+  #
+  #     libcxx/src/chrono.cpp:59 → …/MacOSX.sdk/usr/include/mach/mach_time.h:55:
+  #       error: unknown type name '__MAC_10_10'                     (× 19)
+  #
+  # `chrono.cpp` guards that include with `__has_include`, which is a question
+  # about the MACHINE. On Linux the answer is no and the file compiles; on macOS
+  # the SDK is right there, the answer is yes, and the header arrives without
+  # the prerequisites its own SDK would have supplied. ⇒ The include is optional
+  # to libc++ and the paths this build takes do not use it; the defect is that
+  # the question could be asked at all.
+  "-nostdinc",
+  "-DNDEBUG",
+  "-w",
+  "-ffunction-sections",
+  "-fdata-sections",
+]
+
+[toolchain]
+default = "llvm@22.1.8"

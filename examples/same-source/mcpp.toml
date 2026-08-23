@@ -1,0 +1,60 @@
+[package]
+name    = "openkal-same-source"
+version = "0.1.0"
+
+# ⚠️ NO `[build] target`, AND THAT IS THE POINT OF THE DIRECTORY.
+#
+# The same `src/main.cpp` is built two ways from here:
+#
+#     mcpp run                              — this machine, over openkal-linux
+#     mcpp run --target riscv64-none-elf    — riscv64, over OpenSBI, no OS
+#
+# and both print the same four lines. Pinning a target here would make the
+# second command the only one, and then the directory would be an example of
+# bare metal rather than a demonstration that the source does not know.
+
+# No sysroot: there is no system to take headers or libraries from. The runner
+# is the emulator with firmware, because `-bios default` is what supplies the
+# SBI this program's openkal implementation calls.
+#
+# ⚠️ THE EMULATOR IS NAMED WITHOUT A PATH AND MUST STAY THAT WAY.
+#
+# Running this locally means pointing the name at an installed emulator, and the
+# obvious way to do that is to edit this line. Doing so and committing puts one
+# machine's absolute path into a file every other machine reads — measured
+# twice in this ecosystem now, the first time in `conformance/mcpp.toml`, and
+# both times the way it showed was every other repository's CI failing on a path
+# that exists on exactly one laptop.
+#
+# The CI step that runs this rewrites the name in its own checkout and does not
+# commit; do the same locally, or put the emulator on PATH.
+[target.riscv64-none-elf]
+sysroot = ""
+runner  = ["qemu-system-riscv64", "-machine", "virt", "-nographic",
+           "-no-reboot", "-bios", "default", "-kernel"]
+
+[dependencies]
+openkal-llvm-runtime = { path = "../.." }
+
+# AN ORDINARY TOOLCHAIN, AND THAT IS THE POINT OF THE LINE.
+#
+# `llvm@22.1.8` names a compiler and nothing else. Where this program's headers,
+# C library, C++ runtime and platform implementation come from is not stated
+# here at all — it follows from the one dependency above, and mcpp resolves it
+# after the dependency graph exists.
+#
+# ⚠️ This file used to name `openkal-llvm@22.1.8`, a toolchain family that
+# downloaded nothing `llvm` does not: the same payload, the same clang, the same
+# version. What differed was what mcpp then believed about the target side. That
+# belief now comes from what the packages declare, so the family name carries
+# nothing; it is still accepted, and it decides nothing.
+#
+# The build reports what it resolved, which is where to look when a target does
+# not behave as expected:
+#
+#     Target      aarch64-macos → arm64-apple-macos14.0
+#       kernel-abi  openkal (openkal-macos@0.3.2, graph)
+#       c-abi       musl    (openkal-musl@0.3.2, graph)
+#       c++         libc++  (openkal-llvm-runtime@0.1.0, graph)
+[toolchain]
+default = "llvm@22.1.8"

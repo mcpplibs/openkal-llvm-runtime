@@ -1,0 +1,83 @@
+//===----------------------------------------------------------------------===//
+//
+// Part of the LLVM Project, under the Apache License v2.0 with LLVM Exceptions.
+// See https://llvm.org/LICENSE.txt for license information.
+// SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
+//
+//===----------------------------------------------------------------------===//
+
+#ifndef _LIBCPP___CONFIG_SITE
+#define _LIBCPP___CONFIG_SITE
+
+#define _LIBCPP_ABI_VERSION 1
+#define _LIBCPP_ABI_NAMESPACE __1
+#define _LIBCPP_ABI_FORCE_ITANIUM 0
+#define _LIBCPP_ABI_FORCE_MICROSOFT 0
+#define _LIBCPP_HAS_THREADS 1
+#define _LIBCPP_HAS_MONOTONIC_CLOCK 1
+#define _LIBCPP_HAS_TERMINAL 1
+#define _LIBCPP_HAS_MUSL_LIBC 1
+// ⭐⭐ STATED, NOT LEFT TO libc++ TO GUESS FROM THE OPERATING SYSTEM.
+//
+// All four of these were 0, which is not "no thread API" — it is "nobody
+// answered", and `__config` then answers for itself by naming operating
+// systems: __linux__ / __APPLE__ / … → pthreads, `_LIBCPP_WIN32API` → Win32.
+// On ELF and on Mach-O that guess lands on pthreads and is right by accident.
+//
+// ⚠️ AND THE `__config` OVERLAY CANNOT CORRECT IT. `port/include/__config`
+// withdraws `_LIBCPP_WIN32API`, but it does so AFTER `#include_next <__config>`
+// has already drawn this conclusion from it — the same "conclusion drawn from
+// the conclusion" that `_LIBCPP_HAS_OPEN_WITH_WCHAR` is, and the third instance
+// of it in that file. Measured 2026-08-23, linking for `x86_64-windows-gnu`:
+//
+//     undefined symbol: std::__1::__libcpp_mutex_lock(void**)
+//
+// `void**`, not `pthread_mutex_t*` — the Win32 shape, whose definitions live in
+// `src/support/win32/thread_win32.cpp`, which this package does not build
+// because on openkal there is no Win32 threading to build against.
+//
+// ⇒ openkal's answer is one answer for every target: pthreads, because musl is
+// beneath on every one of them, and musl's pthreads are `kal_task_*`.
+#define _LIBCPP_HAS_THREAD_API_PTHREAD 1
+#define _LIBCPP_HAS_THREAD_API_EXTERNAL 0
+#define _LIBCPP_HAS_THREAD_API_WIN32 0
+#define _LIBCPP_HAS_THREAD_API_C11 0 // FIXME: Is this guarding dead code?
+/* #undef _LIBCPP_DISABLE_VISIBILITY_ANNOTATIONS */
+#define _LIBCPP_HAS_VENDOR_AVAILABILITY_ANNOTATIONS 0
+/* #undef _LIBCPP_NO_VCRUNTIME */
+/* #undef _LIBCPP_TYPEINFO_COMPARISON_IMPLEMENTATION */
+#define _LIBCPP_HAS_FILESYSTEM 1
+#define _LIBCPP_HAS_RANDOM_DEVICE 0
+#define _LIBCPP_HAS_LOCALIZATION 1
+#define _LIBCPP_HAS_UNICODE 1
+#define _LIBCPP_HAS_WIDE_CHARACTERS 1
+#define _LIBCPP_HAS_TIME_ZONE_DATABASE 1
+#define _LIBCPP_INSTRUMENTED_WITH_ASAN 0
+
+// PSTL backends
+/* #undef _LIBCPP_PSTL_BACKEND_SERIAL */
+#define _LIBCPP_PSTL_BACKEND_STD_THREAD
+/* #undef _LIBCPP_PSTL_BACKEND_LIBDISPATCH */
+
+// Hardening.
+#define _LIBCPP_HARDENING_MODE_DEFAULT 2
+#define _LIBCPP_ASSERTION_SEMANTIC_DEFAULT 2
+
+// C libraries
+#define _LIBCPP_LIBC_PICOLIBC 0
+#define _LIBCPP_LIBC_NEWLIB 0
+
+// __USE_MINGW_ANSI_STDIO gets redefined on MinGW
+#ifdef __clang__
+#  pragma clang diagnostic push
+#  pragma clang diagnostic ignored "-Wmacro-redefined"
+#endif
+
+
+
+
+#ifdef __clang__
+#  pragma clang diagnostic pop
+#endif
+
+#endif // _LIBCPP___CONFIG_SITE

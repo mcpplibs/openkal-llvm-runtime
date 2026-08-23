@@ -1,0 +1,9 @@
+[package]
+name    = "openkal-cxx-example"
+version = "0.1.0"
+
+[dependencies]
+openkal-llvm-runtime = { path = "../.." }
+
+[toolchain]
+default = "llvm@22.1.8"

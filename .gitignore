@@ -1,0 +1,14 @@
+target/
+compile_commands.json
+mcpp.lock
+.cache/
+# ⚠️ THE ONE THIS REPOSITORY DID NOT HAVE, AND THE ONE THAT SLIPPED IN.
+# `.mcpp/` is where the build tool keeps a workspace's own state; every other
+# repository in this ecosystem ignores it and this one did not, so a
+# `.mcpp/.xlings.json` from an experiment was committed with the bare-metal
+# work and then travelled in the pull request.
+.mcpp/
+# ⚠️ One `.mcpp/` rule matches the directory at any depth, and it does not
+# remove a file that is ALREADY TRACKED. This repository had two: one at the
+# root and one under `examples/import-std/`. The first cleanup found only the
+# root one, because the scan it used anchored the path at the beginning.
