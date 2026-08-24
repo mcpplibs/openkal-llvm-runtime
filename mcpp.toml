@@ -18,39 +18,42 @@ repo        = "https://github.com/mcpplibs/openkal-llvm-runtime"
 # The older spelling is kept beside the current one so that an engine
 # predating the layer vocabulary still recognises this package. Both name the
 # same layer; a newer engine reads the second and ignores the first.
-provides = ["hosted-standard-library", "mcpp:c++-abi=libc++"]
+provides = [
+    "hosted-standard-library",
+    "mcpp:c++-abi=libc++",
+    # ⚠️ THE LARGER HALF OF THIS PACKAGE, AND IT IS NOT A C++ THING.
+    #
+    # Of the 729 objects built here, 498 are compiler-rt's builtins and 21 are
+    # libunwind's. Those are what a C PROGRAM needs — `__udivti3` and its
+    # relatives have nothing to do with C++ — so declaring them under the C++
+    # layer would say this package supplies something it does not and conceal
+    # something it does.
+    "mcpp:compiler-runtime=compiler-rt",
+]
 
-# ⚠️ THE COMPILER RUNTIME IS THE LARGER HALF OF THIS PACKAGE AND IS NOT YET
-# DECLARED, BECAUSE DECLARING IT WOULD MAKE THIS MANIFEST UNREADABLE TO EVERY
-# RELEASED BUILD TOOL.
+# ── The floor this declaration puts under the package ───────────────────────
 #
-# Measured: of the 729 objects built here, 498 are compiler-rt's builtins and 21
-# are libunwind's. Those are what a C PROGRAM needs — `__udivti3` and its
-# relatives have nothing to do with C++ — so declaring them under the C++ layer
-# says this package supplies something it does not and conceals something it
-# does.
+# `mcpp:compiler-runtime` is a layer name mcpp learned in 2026.8.24.2. Measured
+# 2026-08-24, one dependency declaring one key, each build tool taken from a
+# published release:
 #
-# The layer is named `mcpp:compiler-runtime` from mcpp 2026.8.24.2, and a build
-# tool released before that reports:
+#   requires = ["mcpp:compiler=llvm"]         2026.8.19.4  exit 0   not validated
+#                                             2026.8.24.1  exit 0   not validated
+#   provides = ["mcpp:compiler-runtime=…"]    2026.8.19.4  exit 0   not validated
+#                                             2026.8.24.1  exit 2   REFUSED
+#                                             2026.8.24.3  exit 0   resolved
 #
-#   error: `provides = ["mcpp:compiler-runtime=compiler-rt"]` names no
-#          capability mcpp knows.
+# ⚠️ THE TWO ZEROES AT 2026.8.19.4 ARE NOT THE SAME KIND OF SUCCESS AS THE ONE
+# AT 2026.8.24.3. That tool predates the layer vocabulary and ignores the whole
+# array, so it neither refuses the declaration nor reads it. A CI pinned there
+# would report green over a manifest whose central claim was never examined,
+# which is why this package's `MCPP_VERSION` moves to 2026.8.24.3 in the same
+# change that adds the line.
 #
-# ⚠️ That refusal is itself fixed in 2026.8.24.2 — an unknown layer name in a
-# DEPENDENCY's manifest is now ignored with a warning rather than refused — but
-# the fix cannot apply retroactively to tools already released.
-#
-# ⚠️ AND THE CRITERION IS NOT THIS PACKAGE'S FLOOR. It is what the index serves,
-# because that is what a reader of this file actually has. Measured 2026-08-24
-# against the two keys, with a dependency declaring each and a build tool taken
-# from the version the index named `latest`:
-#
-#   requires = ["mcpp:compiler=llvm"]              2026.8.24.1  exit 0, ignored
-#   provides = ["mcpp:compiler-runtime=…"]         2026.8.24.1  exit 2, refused
-#
-# So `requires` is safe to publish today and the layer declaration is not. The
-# gate on adding it is that the index's `latest` be at 2026.8.24.2 or above —
-# not that a newer mcpp exists, and not that this package's floor was raised.
+# The window that REFUSES is 2026.8.24.1 alone — between the release that began
+# validating the `mcpp:` prefix and the one that learned this layer. Publishing
+# into it was deferred until the index served a tool past it; the index reached
+# 2026.8.24.3 on 2026-08-24 and these packages have no installed base behind it.
 
 # What this package needs of the layer it does not supply.
 #
