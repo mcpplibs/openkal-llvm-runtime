@@ -360,6 +360,32 @@ sources = [
   "!llvm/libcxx/src/filesystem/int128_builtins.cpp",
 ]
 
+# ⚠️ THE x87 ROUTINES ARE AN ARCHITECTURE PROPERTY, AND THE BLOCK ABOVE SORTS
+# BY OPERATING SYSTEM.
+#
+# `*xf*.c` and `*xc3.c` are the 80-bit `long double` routines. On x86 that type
+# is real and the calls are real — the block above deliberately does NOT exclude
+# them, and its own note records why (`ld.lld: error: undefined symbol:
+# __mulxc3`, from libc++'s `<complex>`, once `-lgcc` came off the link line).
+#
+# On every other architecture the type does not exist. Measured 2026-08-25,
+# `--target aarch64-linux-musl`:
+#
+#     truncxfhf2.c:13:36: error: unknown type name 'xf_float';
+#                                did you mean 'tf_float'?
+#
+# ⭐ Both blocks were right about their own case and both sorted on the wrong
+# axis: `os = "macos"` and `os = "none"` happen to imply a non-x87 architecture
+# today, so the exclusion looked like an OS property. It is not. Sorting on the
+# axis the fact actually lives on is what makes a second architecture work
+# without a third copy of the list.
+[target.'cfg(all(os = "linux", not(arch = "x86_64")))'.build]
+sources = [
+  "!llvm/compiler-rt/lib/builtins/*xf*.c",
+  "!llvm/compiler-rt/lib/builtins/*xc3.c",
+]
+
+
 [target.'cfg(windows)'.build]
 # ⚠️ `-fdwarf-exceptions` WAS HERE AND IS NOT ANY MORE, for the reason the macOS
 # block above records: it decides what a `throw` COMPILES INTO, so it is true of
