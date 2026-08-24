@@ -151,8 +151,16 @@ jobs:
           cd examples/same-source && mcpp run 2>&1 | tee host.log
           grep -q 'import std over openkal: ok' host.log
           # The four lines are the same four lines.
-          diff <(grep -E '^(sorted|caught|unwound|import std over openkal):' out.log) \
-               <(grep -E '^(sorted|caught|unwound|import std over openkal):' host.log)
+          #
+          # ⚠️ `tr -d '\r'` ON BOTH SIDES, AND IT IS NOT COSMETIC. The bare-metal
+          # run reaches the console through an emulated 16550 UART, and a serial
+          # console terminates lines with CRLF; the native run does not. Without
+          # this the diff reports four differing lines whose visible text is
+          # identical, which reads as a failure of the claim being tested rather
+          # than of the transport carrying it. The assertion is about what the
+          # program printed, not about how the bytes arrived.
+          diff <(grep -E '^(sorted|caught|unwound|import std over openkal):' out.log  | tr -d '\r') \
+               <(grep -E '^(sorted|caught|unwound|import std over openkal):' host.log | tr -d '\r')
 
       # ⭐⭐ AND THE SAME SOURCE FOR TWO MACHINES THIS ONE IS NOT.
       #
