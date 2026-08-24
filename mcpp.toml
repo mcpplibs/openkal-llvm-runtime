@@ -1,7 +1,7 @@
 [package]
 namespace   = "mcpplibs"
 name        = "openkal-llvm-runtime"
-version     = "0.1.1"
+version     = "0.1.2"
 description = "LLVM's C++ runtime libraries — libc++, libc++abi and libunwind — configured for openkal-musl rather than for a host C library."
 license     = "Apache-2.0"
 authors     = ["mcpplibs"]
@@ -19,6 +19,36 @@ repo        = "https://github.com/mcpplibs/openkal-llvm-runtime"
 # predating the layer vocabulary still recognises this package. Both name the
 # same layer; a newer engine reads the second and ignores the first.
 provides = ["hosted-standard-library", "mcpp:c++-abi=libc++"]
+
+# ⚠️ THE COMPILER RUNTIME IS THE LARGER HALF OF THIS PACKAGE AND IS NOT YET
+# DECLARED, BECAUSE DECLARING IT WOULD MAKE THIS MANIFEST UNREADABLE TO EVERY
+# RELEASED BUILD TOOL.
+#
+# Measured: of the 729 objects built here, 498 are compiler-rt's builtins and 21
+# are libunwind's. Those are what a C PROGRAM needs — `__udivti3` and its
+# relatives have nothing to do with C++ — so declaring them under the C++ layer
+# says this package supplies something it does not and conceals something it
+# does.
+#
+# The layer is named `mcpp:compiler-runtime` from mcpp 2026.8.24.2, and a build
+# tool released before that reports:
+#
+#   error: `provides = ["mcpp:compiler-runtime=compiler-rt"]` names no
+#          capability mcpp knows.
+#
+# ⚠️ That refusal is itself fixed in 2026.8.24.2 — an unknown layer name in a
+# DEPENDENCY's manifest is now ignored with a warning rather than refused — but
+# the fix cannot apply retroactively to tools already released. The declaration
+# is therefore added once this package's floor moves to 2026.8.24.2.
+
+# What this package needs of the layer it does not supply.
+#
+# libc++'s sources, and its `std` module source above all, are compiled by
+# clang. Handing them to gcc fails inside libc++'s own headers, in a message
+# naming a file the reader has never opened. Stating the requirement here lets
+# the build tool refuse the combination before it compiles anything, and lets it
+# name the family without this fact being written into the build tool.
+requires = ["mcpp:compiler=llvm"]
 
 # Where this package's `std' module source is, and what it needs.
 #
