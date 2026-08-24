@@ -38,8 +38,19 @@ provides = ["hosted-standard-library", "mcpp:c++-abi=libc++"]
 #
 # ⚠️ That refusal is itself fixed in 2026.8.24.2 — an unknown layer name in a
 # DEPENDENCY's manifest is now ignored with a warning rather than refused — but
-# the fix cannot apply retroactively to tools already released. The declaration
-# is therefore added once this package's floor moves to 2026.8.24.2.
+# the fix cannot apply retroactively to tools already released.
+#
+# ⚠️ AND THE CRITERION IS NOT THIS PACKAGE'S FLOOR. It is what the index serves,
+# because that is what a reader of this file actually has. Measured 2026-08-24
+# against the two keys, with a dependency declaring each and a build tool taken
+# from the version the index named `latest`:
+#
+#   requires = ["mcpp:compiler=llvm"]              2026.8.24.1  exit 0, ignored
+#   provides = ["mcpp:compiler-runtime=…"]         2026.8.24.1  exit 2, refused
+#
+# So `requires` is safe to publish today and the layer declaration is not. The
+# gate on adding it is that the index's `latest` be at 2026.8.24.2 or above —
+# not that a newer mcpp exists, and not that this package's floor was raised.
 
 # What this package needs of the layer it does not supply.
 #
