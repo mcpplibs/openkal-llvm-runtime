@@ -96,6 +96,36 @@ std-module-flags = [
   # package first, and the module fails compiling <wchar.h> with names that
   # library expects the host compiler to have supplied. Measured.
   "--no-default-config",
+  # ⚠️ AND THE RUNTIME LIBRARY BACK, BECAUSE `--no-default-config` TOOK IT AND
+  # IT DECIDES TARGET FEATURES.
+  #
+  # The flag above exists to keep the payload's `clang++.cfg` from putting a
+  # host C library's headers first. It removes the whole file, and that file
+  # also carries `--rtlib=compiler-rt` — which on aarch64 is not a link-time
+  # choice but a CODEGEN one. Measured, llvm 22.1.8:
+  #
+  #     --target=aarch64-…-musl                        -fmv +fp-armv8 +neon +v8a
+  #     --target=aarch64-…-musl --rtlib=compiler-rt    +fp-armv8 +neon
+  #                                                    +outline-atomics +v8a
+  #     … --rtlib=libgcc / --rtlib=platform            (as the first line)
+  #
+  # ⭐ ONLY compiler-rt ENABLES IT. `outline-atomics` needs `__aarch64_*`
+  # helpers at run time and clang turns the feature on exactly when the runtime
+  # library it was told about supplies them.
+  #
+  # The consequence was a std module built without the feature and translation
+  # units built with it:
+  #
+  #     error: precompiled file 'std.pcm' was compiled with the target feature
+  #            '-fmv' but the current translation unit is not
+  #
+  # ⚠️ x86_64 HAS NO SUCH FEATURE, so the two sides agreed there and the defect
+  # was invisible until a second architecture was built. Measured: on
+  # `x86_64-…-musl` both sides list nothing at all, with or without this flag.
+  #
+  # Stating it here is also the honest place for it: this package IS the
+  # compiler runtime it names.
+  "--rtlib=compiler-rt",
   "-nostdinc",
   "-nostdinc++",
   # libc++'s locale layer reaches for names musl declares only under this macro
@@ -117,6 +147,41 @@ std-module-flags = [
 # criterion the whole package exists to satisfy is the one openkal keeps
 # returning to --- whether an implementation has been configured FOR this
 # target, not whether its headers can be found.
+# ⭐⭐ outline-atomics 的 125 个辅助函数,由本包供给 —— 因为本包就是那份
+# compiler-rt。
+#
+# `--rtlib=compiler-rt` 让 clang 在 aarch64 上开启 `+outline-atomics`,
+# 而它是对的:该特性的 `__aarch64_*` 辅助函数本来就住在 compiler-rt 里。
+# 此前本包不产出它们,于是特性被开启而没有人实现:
+#
+#     ld.lld: error: undefined symbol: __aarch64_swp4_acq
+#     ld.lld: error: undefined symbol: __aarch64_cas8_acq_rel
+#
+# ⚠️ 引用来自 `openkal-linux/src/memory.o` 与 `openkal-musl/port/src/okm_fd.o`
+# —— 两个对这件事一无所知、只是用了原子操作的包。缺的是这份运行时该有的东西。
+#
+# upstream 的做法是把 `aarch64/lse.S` 编 125 遍,每遍给不同的
+# `-DL_<pat> -DSIZE=<n> -DMODEL=<m>`(6 模式 × 5 尺寸 × 5 模型,
+# 非 cas 的 16 字节档不存在)。一个用 glob 表达 sources 的清单传不了
+# per-file 定义 —— 于是每个组合成为一个**自己声明宏、再 include 共享正文**
+# 的文件。正文是 upstream 的,未经修改,仍在原处。
+#
+# ⭐ 这是把宏从**命令行**移到**文件内部**,而不是复制 125 份实现。
+[target.'cfg(arch = "aarch64")'.build]
+sources = [
+  "llvm-generated/outline-atomics/*.S",
+  # ⚠️ 并且定义那个探测变量的文件。这 125 个辅助函数每一个都读
+  # `__aarch64_have_lse_atomics` —— 它在运行时决定走 LSE 指令还是
+  # load/store-exclusive 循环。少了它:
+  #
+  #     ld.lld: error: undefined hidden symbol: __aarch64_have_lse_atomics
+  #
+  # ⭐ 它在 `cpu_model/aarch64.c`,而 `[build]` 段的 glob 是
+  # `llvm/compiler-rt/lib/builtins/*.c` —— **不含子目录**,所以这个文件
+  # 从未被编过。upstream 把它列在 `aarch64_SOURCES` 里,与本节同一批。
+  "llvm/compiler-rt/lib/builtins/cpu_model/aarch64.c",
+]
+
 [dependencies]
 openkal-musl = "0.3.3"
 
@@ -384,7 +449,6 @@ sources = [
   "!llvm/compiler-rt/lib/builtins/*xf*.c",
   "!llvm/compiler-rt/lib/builtins/*xc3.c",
 ]
-
 
 [target.'cfg(windows)'.build]
 # ⚠️ `-fdwarf-exceptions` WAS HERE AND IS NOT ANY MORE, for the reason the macOS
