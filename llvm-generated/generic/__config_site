@@ -47,7 +47,22 @@
 /* #undef _LIBCPP_NO_VCRUNTIME */
 /* #undef _LIBCPP_TYPEINFO_COMPARISON_IMPLEMENTATION */
 #define _LIBCPP_HAS_FILESYSTEM 1
-#define _LIBCPP_HAS_RANDOM_DEVICE 0
+#define _LIBCPP_HAS_RANDOM_DEVICE 1
+
+/* ⚠️ AND THE BACKEND, EXPLICITLY, BECAUSE THE DEFAULT ONE CANNOT WORK HERE.
+ *
+ * libc++ picks `_LIBCPP_USING_DEV_RANDOM` for anything it does not recognise,
+ * and that backend opens `/dev/urandom` by absolute path. A capability-oriented
+ * filesystem hands a program its roots rather than the whole namespace, so
+ * openkal.fs deliberately cannot open it --- the refusal is the model working.
+ *
+ * `getentropy` needs no descriptor and no path. Beneath it musl calls
+ * `getrandom`, which this port routes to `kal_random_fill` rather than to a
+ * system call, so the whole chain stays inside the interface layer:
+ *
+ *     std::random_device → getentropy → getrandom → openkal.random → backend
+ */
+#define _LIBCPP_USING_GETENTROPY 1
 #define _LIBCPP_HAS_LOCALIZATION 1
 #define _LIBCPP_HAS_UNICODE 1
 #define _LIBCPP_HAS_WIDE_CHARACTERS 1

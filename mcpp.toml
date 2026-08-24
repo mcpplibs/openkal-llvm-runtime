@@ -253,12 +253,29 @@ sources = [
 
   # The standard library.
   "llvm/libcxx/src/*.cpp",
-  # openkal has no source of entropy and this port does not invent one, so the
-  # configuration sets _LIBCPP_HAS_RANDOM_DEVICE to 0 --- and the source that
-  # defines std::random_device must then not be compiled, which is what libc++'s
-  # own build does with the same switch. A program that names random_device is
-  # told by the linker, which is clause 6.1's report.
-  "!llvm/libcxx/src/random.cpp",
+  # ⭐ AND `random.cpp` IS BUILT, BECAUSE openkal NOW HAS A SOURCE OF ENTROPY.
+  #
+  # It used to be excluded, paired with `_LIBCPP_HAS_RANDOM_DEVICE 0`, and the
+  # note here said openkal had no source and this port would not invent one.
+  # That was accurate: a clock reading is unpredictable to a reader of the
+  # source and not to an adversary, and openkal.fs deliberately cannot open
+  # `/dev/urandom` --- a capability-oriented filesystem hands over roots rather
+  # than the whole namespace.
+  #
+  # ⚠️ Neither bypassing the interface layer nor inventing entropy was
+  # acceptable, so the layer gained an interface: `openkal.random`. The chain
+  # now runs entirely inside it:
+  #
+  #     std::random_device → getentropy → getrandom → kal_random_fill → backend
+  #
+  # ⚠️ THE BACKEND IS SELECTED EXPLICITLY IN `__config_site`. libc++ falls back
+  # to `_LIBCPP_USING_DEV_RANDOM` for anything it does not recognise, and that
+  # one opens `/dev/urandom` by absolute path. `_LIBCPP_USING_GETENTROPY` needs
+  # no descriptor and no path.
+  #
+  # ⚠️ The freestanding configuration keeps the switch at 0: a bare-metal
+  # backend provides `openkal.random` only if its board has a source, and
+  # clause 6.1 reports the absence at link time rather than here.
   "llvm/libcxx/src/filesystem/*.cpp",
   "llvm/libcxx/src/ryu/*.cpp",
   "llvm/libcxx/src/support/runtime/*.cpp",
