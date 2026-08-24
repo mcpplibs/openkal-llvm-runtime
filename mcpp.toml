@@ -1,7 +1,7 @@
 [package]
 namespace   = "mcpplibs"
 name        = "openkal-llvm-runtime"
-version     = "0.1.1"
+version     = "0.1.2"
 description = "LLVM's C++ runtime libraries — libc++, libc++abi and libunwind — configured for openkal-musl rather than for a host C library."
 license     = "Apache-2.0"
 authors     = ["mcpplibs"]
@@ -18,7 +18,27 @@ repo        = "https://github.com/mcpplibs/openkal-llvm-runtime"
 # The older spelling is kept beside the current one so that an engine
 # predating the layer vocabulary still recognises this package. Both name the
 # same layer; a newer engine reads the second and ignores the first.
-provides = ["hosted-standard-library", "mcpp:c++-abi=libc++"]
+provides = [
+  "hosted-standard-library",
+  "mcpp:c++-abi=libc++",
+  # ⭐ AND THE COMPILER RUNTIME, WHICH IS THE LARGER HALF OF THIS PACKAGE.
+  #
+  # Measured: of the 729 objects this package builds, 498 are compiler-rt's
+  # builtins and 21 are libunwind's. Those are what a C PROGRAM needs —
+  # `__udivti3` and its relatives have nothing to do with C++ — and declaring
+  # them under the C++ layer said this package supplied something it does not
+  # and concealed something it does.
+  "mcpp:compiler-runtime=compiler-rt",
+]
+
+# What this package needs of the layer it does not supply.
+#
+# libc++'s sources, and its `std` module source above all, are compiled by
+# clang. Handing them to gcc fails inside libc++'s own headers, in a message
+# naming a file the reader has never opened. Stating the requirement here lets
+# the build tool refuse the combination before it compiles anything, and lets it
+# name the family without this fact being written into the build tool.
+requires = ["mcpp:compiler=llvm"]
 
 # Where this package's `std' module source is, and what it needs.
 #
