@@ -181,6 +181,21 @@ sources = [
   # 从未被编过。upstream 把它列在 `aarch64_SOURCES` 里,与本节同一批。
   "llvm/compiler-rt/lib/builtins/cpu_model/aarch64.c",
 ]
+# ⚠️ FMV 关掉,而它不是可选的清理 —— 那半个文件在 macOS 宿主上根本编不过。
+#
+# `cpu_model/aarch64.c` 的后半是函数多版本(FMV)的实现,按宿主分支 include
+# 一个 `.inc`。Apple 那支拉的是系统头:
+#
+#     aarch64/fmv/apple.inc:1:10: fatal error: 'TargetConditionals.h' file not found
+#
+# 而本包的 `include_dirs` 刻意不含任何来自机器的路径 —— 见该段的
+# ⭐⭐ NOTHING FROM THE MACHINE。⚠️ 本机 Linux 上编得过,CI 的 macOS 那格才炸,
+# 是典型的「一台宿主看不见」的形状。
+#
+# ⭐ 而本包**不需要** FMV:要的只是 `__aarch64_have_lse_atomics`,
+# 它定义在 `#if !defined(DISABLE_AARCH64_FMV)` 之外。upstream 自己也有这个
+# 开关(`COMPILER_RT_DISABLE_AARCH64_FMV`),所以这是走它给的门,不是绕过。
+cflags = ["-DDISABLE_AARCH64_FMV=1"]
 
 [dependencies]
 openkal-musl = "0.3.3"
