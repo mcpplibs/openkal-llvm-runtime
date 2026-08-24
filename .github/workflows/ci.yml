@@ -107,61 +107,6 @@ jobs:
           xlings install xim:qemu-riscv -y
           XLINGS_HOME="$HOME/.mcpp/registry" xlings install xim:qemu-riscv -y
 
-      # ⚠️ THE BUILD TOOL IS BUILT FROM A BRANCH, AND THAT IS TEMPORARY.
-      #
-      # This step needs four decisions that no released mcpp makes yet, each of
-      # which belongs to the tool rather than to this package:
-      #
-      #   `import std` is gated on whether a package PROVIDES a standard
-      #   library for the target rather than on whether the target is
-      #   freestanding; a package may carry its own std module source;
-      #   `-fno-exceptions` / `-fno-rtti` / `-ffreestanding` come off when the
-      #   graph supplies a C++ runtime built for the target; and unwind tables
-      #   go on, because the compiler turns them off for this kind of target
-      #   and a partial set of tables stops the walk rather than degrading it.
-      #
-      # They are on mcpp-community/mcpp#486. Until that is released this job
-      # builds the tool the same way every other dependency here is taken —
-      # from the branch — so the criterion below is actually enforced instead
-      # of being a comment saying it was verified once on a laptop.
-      #
-      # ⇒ When #486 ships, delete this step and raise MCPP_VERSION.
-      - name: The build tool, from the branch that has what this needs
-        if: matrix.toolchain == 'llvm@22.1.8'
-        run: |
-          set -euo pipefail
-          git clone --depth 1 -b feat/import-std-capability \
-            https://github.com/mcpp-community/mcpp "$RUNNER_TEMP/mcpp-src"
-          cd "$RUNNER_TEMP/mcpp-src"
-          # ⚠️ THE CLONE CARRIES A WORKSPACE PIN, AND IT NAMES A VERSION THE
-          # INDEX NO LONGER HAS.
-          #
-          #     xlings: version '2026.8.17.1' not found for 'mcpp'
-          #       available: 2026.8.19.4
-          #
-          # `.xlings.json` at a repository root says which mcpp a build in that
-          # tree uses, and mcpp's own bootstrap pin does not move when mcpp is
-          # released — it is the version that was current when the pin was last
-          # touched. Cloning the branch therefore imports a pin that is only
-          # valid inside that repository's own CI, where the same file selects
-          # what gets installed.
-          #
-          # Rewriting it to the version this job already installed is what makes
-          # the two agree. It changes nothing about what is being tested: the
-          # pin selects the tool that BUILDS mcpp, and what is under test is the
-          # mcpp that comes out.
-          printf '{\n  "workspace": {\n    "mcpp": "%s"\n  }\n}\n' "$MCPP_VERSION" > .xlings.json
-          # ⚠️ `--dev` AND NOT `--release`. What is under test is a set of
-          # decisions the tool makes about compile flags; an optimisation level
-          # changes none of them. Measured: the release self-build took over
-          # half an hour of a sixty-minute job on a two-core runner, which is
-          # most of the budget spent on something the test does not observe.
-          mcpp build --dev
-          BUILT=$(find target -type f -name mcpp -perm -u+x | head -1)
-          [ -n "$BUILT" ] || { echo "::error::mcpp did not build"; exit 1; }
-          echo "$(cd "$(dirname "$BUILT")" && pwd)" >> "$GITHUB_PATH"
-          "$BUILT" --version
-
       - name: The same source on bare metal, with exceptions
         if: matrix.toolchain == 'llvm@22.1.8'
         run: |
@@ -175,7 +120,18 @@ jobs:
           grep -q '"qemu-system-riscv64"' mcpp.toml \
             || { echo "::error::the manifest no longer carries the bare emulator name"; exit 1; }
           sed -i "s|\"qemu-system-riscv64\"|\"$Q\"|" mcpp.toml
-          mcpp run 2>&1 | tee out.log
+          # ⚠️ `--target riscv64-none-elf`, AND THE FLAG IS THE WHOLE STEP.
+          #
+          # This manifest carries no `[build] target`, so a bare `mcpp run`
+          # builds for the HOST and passes — the four lines below appear either
+          # way, which is the manifest's own claim and not an accident. A step
+          # named "on bare metal" that omits the flag therefore reports green
+          # over a host build and has never once reached OpenSBI. Measured
+          # 2026-08-24: the artefact was `target/x86_64-linux-gnu/…`.
+          mcpp run --target riscv64-none-elf 2>&1 | tee out.log
+          # The emulator's own banner, so a run that never left the host cannot
+          # satisfy this step by printing the four application lines.
+          grep -q 'Boot HART'       out.log   # firmware ran; this is OpenSBI
           grep -q 'sorted: 2 4 7'   out.log   # containers + algorithms + the allocator
           grep -q 'caught: 42'      out.log   # the unwinder found the handler
           grep -q 'unwound: true'   out.log   # ⭐ and ran a destructor on the way
@@ -397,25 +353,6 @@ jobs:
           # `llvm@22.1.8 is not installed` — measured on both rows of this job.
           mcpp toolchain install llvm 22.1.8
           mcpp toolchain default 'llvm@22.1.8'
-
-      # ⚠️ Same temporary step as the Linux job: the decisions this exercises are
-      # on mcpp#486 and not in any release. When that ships, this goes and
-      # MCPP_VERSION rises. See the long note in the `runtime` job.
-      - name: The build tool, from the branch that has what this needs
-        run: |
-          set -euo pipefail
-          git clone --depth 1 -b feat/import-std-capability \
-            https://github.com/mcpp-community/mcpp "$RUNNER_TEMP/mcpp-src"
-          cd "$RUNNER_TEMP/mcpp-src"
-          printf '{\n  "workspace": {\n    "mcpp": "%s"\n  }\n}\n' "$MCPP_VERSION" > .xlings.json
-          mcpp build --dev
-          # ⚠️ Named exactly, and `-perm` is not used. On Windows every file
-          # reads as executable, so a permission test selects nothing useful;
-          # `mcpp.exe` is the name there and `mcpp` everywhere else.
-          BUILT=$(find target -type f \( -name 'mcpp' -o -name 'mcpp.exe' \) | head -1)
-          [ -n "$BUILT" ] || { echo "::error::mcpp did not build"; exit 1; }
-          echo "$(cd "$(dirname "$BUILT")" && pwd)" >> "$GITHUB_PATH"
-          "$BUILT" --version
 
       - name: Every target, from this host
         run: |
