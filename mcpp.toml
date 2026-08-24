@@ -18,18 +18,28 @@ repo        = "https://github.com/mcpplibs/openkal-llvm-runtime"
 # The older spelling is kept beside the current one so that an engine
 # predating the layer vocabulary still recognises this package. Both name the
 # same layer; a newer engine reads the second and ignores the first.
-provides = [
-  "hosted-standard-library",
-  "mcpp:c++-abi=libc++",
-  # ⭐ AND THE COMPILER RUNTIME, WHICH IS THE LARGER HALF OF THIS PACKAGE.
-  #
-  # Measured: of the 729 objects this package builds, 498 are compiler-rt's
-  # builtins and 21 are libunwind's. Those are what a C PROGRAM needs —
-  # `__udivti3` and its relatives have nothing to do with C++ — and declaring
-  # them under the C++ layer said this package supplied something it does not
-  # and concealed something it does.
-  "mcpp:compiler-runtime=compiler-rt",
-]
+provides = ["hosted-standard-library", "mcpp:c++-abi=libc++"]
+
+# ⚠️ THE COMPILER RUNTIME IS THE LARGER HALF OF THIS PACKAGE AND IS NOT YET
+# DECLARED, BECAUSE DECLARING IT WOULD MAKE THIS MANIFEST UNREADABLE TO EVERY
+# RELEASED BUILD TOOL.
+#
+# Measured: of the 729 objects built here, 498 are compiler-rt's builtins and 21
+# are libunwind's. Those are what a C PROGRAM needs — `__udivti3` and its
+# relatives have nothing to do with C++ — so declaring them under the C++ layer
+# says this package supplies something it does not and conceals something it
+# does.
+#
+# The layer is named `mcpp:compiler-runtime` from mcpp 2026.8.24.2, and a build
+# tool released before that reports:
+#
+#   error: `provides = ["mcpp:compiler-runtime=compiler-rt"]` names no
+#          capability mcpp knows.
+#
+# ⚠️ That refusal is itself fixed in 2026.8.24.2 — an unknown layer name in a
+# DEPENDENCY's manifest is now ignored with a warning rather than refused — but
+# the fix cannot apply retroactively to tools already released. The declaration
+# is therefore added once this package's floor moves to 2026.8.24.2.
 
 # What this package needs of the layer it does not supply.
 #
