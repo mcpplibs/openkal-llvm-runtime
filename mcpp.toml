@@ -273,9 +273,25 @@ sources = [
   # one opens `/dev/urandom` by absolute path. `_LIBCPP_USING_GETENTROPY` needs
   # no descriptor and no path.
   #
-  # ⚠️ The freestanding configuration keeps the switch at 0: a bare-metal
-  # backend provides `openkal.random` only if its board has a source, and
-  # clause 6.1 reports the absence at link time rather than here.
+  # ⚠️ THE FREESTANDING CONFIGURATION KEEPS THE SWITCH AT 0, AND WHAT THAT
+  # MEANS IS NOT WHAT AN EARLIER VERSION OF THIS NOTE SAID.
+  #
+  # It said clause 6.1 would report the absence at link time. It does not:
+  # with the switch off, `<random>` does not declare the class at all ---
+  #
+  #     __random/random_device.h:24:  #if _LIBCPP_HAS_RANDOM_DEVICE
+  #     __random/random_device.h:26:  class random_device {
+  #
+  # --- so a bare-metal program naming `std::random_device` is refused where
+  # it is written, beside `_LIBCPP_HAS_FILESYSTEM 0` and for the same reason.
+  # That is the better diagnosis of the two, and it is the one that happens.
+  #
+  # ⚠️ It is also a STATIC answer to a fact that varies. A board with a
+  # hardware source could have a backend that provides `openkal.random`, and
+  # this switch would still be 0. Deciding it per backend needs a signal this
+  # package does not have --- the configuration is generated once, before any
+  # graph is resolved. Recorded rather than solved; the first board that wants
+  # it is the case that should reopen this.
   "llvm/libcxx/src/filesystem/*.cpp",
   "llvm/libcxx/src/ryu/*.cpp",
   "llvm/libcxx/src/support/runtime/*.cpp",
