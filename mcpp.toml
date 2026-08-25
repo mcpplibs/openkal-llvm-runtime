@@ -1,7 +1,7 @@
 [package]
 namespace   = "mcpplibs"
 name        = "openkal-llvm-runtime"
-version     = "0.1.2"
+version     = "0.1.3"
 description = "LLVM's C++ runtime libraries — libc++, libc++abi and libunwind — configured for openkal-musl rather than for a host C library."
 license     = "Apache-2.0"
 authors     = ["mcpplibs"]
@@ -96,6 +96,36 @@ std-module-flags = [
   # package first, and the module fails compiling <wchar.h> with names that
   # library expects the host compiler to have supplied. Measured.
   "--no-default-config",
+  # ⚠️ AND THE RUNTIME LIBRARY BACK, BECAUSE `--no-default-config` TOOK IT AND
+  # IT DECIDES TARGET FEATURES.
+  #
+  # The flag above exists to keep the payload's `clang++.cfg` from putting a
+  # host C library's headers first. It removes the whole file, and that file
+  # also carries `--rtlib=compiler-rt` — which on aarch64 is not a link-time
+  # choice but a CODEGEN one. Measured, llvm 22.1.8:
+  #
+  #     --target=aarch64-…-musl                        -fmv +fp-armv8 +neon +v8a
+  #     --target=aarch64-…-musl --rtlib=compiler-rt    +fp-armv8 +neon
+  #                                                    +outline-atomics +v8a
+  #     … --rtlib=libgcc / --rtlib=platform            (as the first line)
+  #
+  # ⭐ ONLY compiler-rt ENABLES IT. `outline-atomics` needs `__aarch64_*`
+  # helpers at run time and clang turns the feature on exactly when the runtime
+  # library it was told about supplies them.
+  #
+  # The consequence was a std module built without the feature and translation
+  # units built with it:
+  #
+  #     error: precompiled file 'std.pcm' was compiled with the target feature
+  #            '-fmv' but the current translation unit is not
+  #
+  # ⚠️ x86_64 HAS NO SUCH FEATURE, so the two sides agreed there and the defect
+  # was invisible until a second architecture was built. Measured: on
+  # `x86_64-…-musl` both sides list nothing at all, with or without this flag.
+  #
+  # Stating it here is also the honest place for it: this package IS the
+  # compiler runtime it names.
+  "--rtlib=compiler-rt",
   "-nostdinc",
   "-nostdinc++",
   # libc++'s locale layer reaches for names musl declares only under this macro
@@ -117,8 +147,58 @@ std-module-flags = [
 # criterion the whole package exists to satisfy is the one openkal keeps
 # returning to --- whether an implementation has been configured FOR this
 # target, not whether its headers can be found.
+# ⭐⭐ outline-atomics 的 125 个辅助函数,由本包供给 —— 因为本包就是那份
+# compiler-rt。
+#
+# `--rtlib=compiler-rt` 让 clang 在 aarch64 上开启 `+outline-atomics`,
+# 而它是对的:该特性的 `__aarch64_*` 辅助函数本来就住在 compiler-rt 里。
+# 此前本包不产出它们,于是特性被开启而没有人实现:
+#
+#     ld.lld: error: undefined symbol: __aarch64_swp4_acq
+#     ld.lld: error: undefined symbol: __aarch64_cas8_acq_rel
+#
+# ⚠️ 引用来自 `openkal-linux/src/memory.o` 与 `openkal-musl/port/src/okm_fd.o`
+# —— 两个对这件事一无所知、只是用了原子操作的包。缺的是这份运行时该有的东西。
+#
+# upstream 的做法是把 `aarch64/lse.S` 编 125 遍,每遍给不同的
+# `-DL_<pat> -DSIZE=<n> -DMODEL=<m>`(6 模式 × 5 尺寸 × 5 模型,
+# 非 cas 的 16 字节档不存在)。一个用 glob 表达 sources 的清单传不了
+# per-file 定义 —— 于是每个组合成为一个**自己声明宏、再 include 共享正文**
+# 的文件。正文是 upstream 的,未经修改,仍在原处。
+#
+# ⭐ 这是把宏从**命令行**移到**文件内部**,而不是复制 125 份实现。
+[target.'cfg(arch = "aarch64")'.build]
+sources = [
+  "llvm-generated/outline-atomics/*.S",
+  # ⚠️ 并且定义那个探测变量的文件。这 125 个辅助函数每一个都读
+  # `__aarch64_have_lse_atomics` —— 它在运行时决定走 LSE 指令还是
+  # load/store-exclusive 循环。少了它:
+  #
+  #     ld.lld: error: undefined hidden symbol: __aarch64_have_lse_atomics
+  #
+  # ⭐ 它在 `cpu_model/aarch64.c`,而 `[build]` 段的 glob 是
+  # `llvm/compiler-rt/lib/builtins/*.c` —— **不含子目录**,所以这个文件
+  # 从未被编过。upstream 把它列在 `aarch64_SOURCES` 里,与本节同一批。
+  "llvm/compiler-rt/lib/builtins/cpu_model/aarch64.c",
+]
+# ⚠️ FMV 关掉,而它不是可选的清理 —— 那半个文件在 macOS 宿主上根本编不过。
+#
+# `cpu_model/aarch64.c` 的后半是函数多版本(FMV)的实现,按宿主分支 include
+# 一个 `.inc`。Apple 那支拉的是系统头:
+#
+#     aarch64/fmv/apple.inc:1:10: fatal error: 'TargetConditionals.h' file not found
+#
+# 而本包的 `include_dirs` 刻意不含任何来自机器的路径 —— 见该段的
+# ⭐⭐ NOTHING FROM THE MACHINE。⚠️ 本机 Linux 上编得过,CI 的 macOS 那格才炸,
+# 是典型的「一台宿主看不见」的形状。
+#
+# ⭐ 而本包**不需要** FMV:要的只是 `__aarch64_have_lse_atomics`,
+# 它定义在 `#if !defined(DISABLE_AARCH64_FMV)` 之外。upstream 自己也有这个
+# 开关(`COMPILER_RT_DISABLE_AARCH64_FMV`),所以这是走它给的门,不是绕过。
+cflags = ["-DDISABLE_AARCH64_FMV=1"]
+
 [dependencies]
-openkal-musl = "0.3.3"
+openkal-musl = "0.3.5"
 
 [build]
 cxx_standard = "c++23"
@@ -173,12 +253,45 @@ sources = [
 
   # The standard library.
   "llvm/libcxx/src/*.cpp",
-  # openkal has no source of entropy and this port does not invent one, so the
-  # configuration sets _LIBCPP_HAS_RANDOM_DEVICE to 0 --- and the source that
-  # defines std::random_device must then not be compiled, which is what libc++'s
-  # own build does with the same switch. A program that names random_device is
-  # told by the linker, which is clause 6.1's report.
-  "!llvm/libcxx/src/random.cpp",
+  # ⭐ AND `random.cpp` IS BUILT, BECAUSE openkal NOW HAS A SOURCE OF ENTROPY.
+  #
+  # It used to be excluded, paired with `_LIBCPP_HAS_RANDOM_DEVICE 0`, and the
+  # note here said openkal had no source and this port would not invent one.
+  # That was accurate: a clock reading is unpredictable to a reader of the
+  # source and not to an adversary, and openkal.fs deliberately cannot open
+  # `/dev/urandom` --- a capability-oriented filesystem hands over roots rather
+  # than the whole namespace.
+  #
+  # ⚠️ Neither bypassing the interface layer nor inventing entropy was
+  # acceptable, so the layer gained an interface: `openkal.random`. The chain
+  # now runs entirely inside it:
+  #
+  #     std::random_device → getentropy → getrandom → kal_random_fill → backend
+  #
+  # ⚠️ THE BACKEND IS SELECTED EXPLICITLY IN `__config_site`. libc++ falls back
+  # to `_LIBCPP_USING_DEV_RANDOM` for anything it does not recognise, and that
+  # one opens `/dev/urandom` by absolute path. `_LIBCPP_USING_GETENTROPY` needs
+  # no descriptor and no path.
+  #
+  # ⚠️ THE FREESTANDING CONFIGURATION KEEPS THE SWITCH AT 0, AND WHAT THAT
+  # MEANS IS NOT WHAT AN EARLIER VERSION OF THIS NOTE SAID.
+  #
+  # It said clause 6.1 would report the absence at link time. It does not:
+  # with the switch off, `<random>` does not declare the class at all ---
+  #
+  #     __random/random_device.h:24:  #if _LIBCPP_HAS_RANDOM_DEVICE
+  #     __random/random_device.h:26:  class random_device {
+  #
+  # --- so a bare-metal program naming `std::random_device` is refused where
+  # it is written, beside `_LIBCPP_HAS_FILESYSTEM 0` and for the same reason.
+  # That is the better diagnosis of the two, and it is the one that happens.
+  #
+  # ⚠️ It is also a STATIC answer to a fact that varies. A board with a
+  # hardware source could have a backend that provides `openkal.random`, and
+  # this switch would still be 0. Deciding it per backend needs a signal this
+  # package does not have --- the configuration is generated once, before any
+  # graph is resolved. Recorded rather than solved; the first board that wants
+  # it is the case that should reopen this.
   "llvm/libcxx/src/filesystem/*.cpp",
   "llvm/libcxx/src/ryu/*.cpp",
   "llvm/libcxx/src/support/runtime/*.cpp",
@@ -360,6 +473,31 @@ sources = [
   "!llvm/libcxx/src/filesystem/int128_builtins.cpp",
 ]
 
+# ⚠️ THE x87 ROUTINES ARE AN ARCHITECTURE PROPERTY, AND THE BLOCK ABOVE SORTS
+# BY OPERATING SYSTEM.
+#
+# `*xf*.c` and `*xc3.c` are the 80-bit `long double` routines. On x86 that type
+# is real and the calls are real — the block above deliberately does NOT exclude
+# them, and its own note records why (`ld.lld: error: undefined symbol:
+# __mulxc3`, from libc++'s `<complex>`, once `-lgcc` came off the link line).
+#
+# On every other architecture the type does not exist. Measured 2026-08-25,
+# `--target aarch64-linux-musl`:
+#
+#     truncxfhf2.c:13:36: error: unknown type name 'xf_float';
+#                                did you mean 'tf_float'?
+#
+# ⭐ Both blocks were right about their own case and both sorted on the wrong
+# axis: `os = "macos"` and `os = "none"` happen to imply a non-x87 architecture
+# today, so the exclusion looked like an OS property. It is not. Sorting on the
+# axis the fact actually lives on is what makes a second architecture work
+# without a third copy of the list.
+[target.'cfg(all(os = "linux", not(arch = "x86_64")))'.build]
+sources = [
+  "!llvm/compiler-rt/lib/builtins/*xf*.c",
+  "!llvm/compiler-rt/lib/builtins/*xc3.c",
+]
+
 [target.'cfg(windows)'.build]
 # ⚠️ `-fdwarf-exceptions` WAS HERE AND IS NOT ANY MORE, for the reason the macOS
 # block above records: it decides what a `throw` COMPILES INTO, so it is true of
@@ -507,6 +645,24 @@ ldflags = ["-Wl,--eh-frame-hdr"]
 #   two halves of an initialisation array that a linker script places here.
 sources = [
   "!llvm/libcxx/src/filesystem/*.cpp",
+
+  # ⭐ AND `random.cpp`, FOR THE SAME REASON AND BY THE SAME RULE.
+  #
+  # This configuration keeps `_LIBCPP_HAS_RANDOM_DEVICE` at 0 --- a bare-metal
+  # backend provides `openkal.random` only if its board has a source, and
+  # clause 6.1 reports that absence at link time rather than here. With the
+  # switch off, `<random>` does not declare the class, while `src/random.cpp`
+  # defines its members unconditionally --- the file carries no guard of its
+  # own, unlike the filesystem sources:
+  #
+  #     llvm/libcxx/src/random.cpp:68:1:
+  #         error: use of undeclared identifier 'random_device'
+  #
+  # ⚠️ The exclusion was removed together with the hosted one when openkal
+  # gained an entropy source, and the two are not the same decision: the
+  # hosted configuration turned the switch ON, and this one did not.
+  "!llvm/libcxx/src/random.cpp",
+
   "llvm/compiler-rt/lib/builtins/*.c",
   "!llvm/compiler-rt/lib/builtins/atomic*.c",
   "!llvm/compiler-rt/lib/builtins/clear_cache.c",
