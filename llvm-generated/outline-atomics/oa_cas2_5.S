@@ -1,10 +1,11 @@
-// Generated. One of the 130 instantiations of compiler-rt's `aarch64/lse.S`.
+// Generated. One of the 125 instantiations of compiler-rt's `aarch64/lse.S`.
 //
-// Upstream's CMake compiles that one file 130 times with different defines
-// (6 patterns x 5 sizes x 5 models, minus the non-cas 16-byte cases). A
-// manifest expressing its sources as a glob cannot pass per-file defines, so
-// each combination becomes a file that states its own and includes the shared
-// body. The body is upstream's and unmodified.
+// Upstream's CMake compiles that one file once per combination of pattern,
+// size and memory ordering: `cas` at all five sizes, and five further patterns
+// at four sizes each, times five orderings --- 25 + 100. A manifest expressing
+// its sources as a glob cannot pass per-file defines, so each combination
+// becomes a file that states its own and includes the shared body. The body is
+// upstream's and unmodified.
 #define L_cas
 #define SIZE 2
 #define MODEL 5
