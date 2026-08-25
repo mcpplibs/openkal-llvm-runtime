@@ -629,6 +629,24 @@ ldflags = ["-Wl,--eh-frame-hdr"]
 #   two halves of an initialisation array that a linker script places here.
 sources = [
   "!llvm/libcxx/src/filesystem/*.cpp",
+
+  # ⭐ AND `random.cpp`, FOR THE SAME REASON AND BY THE SAME RULE.
+  #
+  # This configuration keeps `_LIBCPP_HAS_RANDOM_DEVICE` at 0 --- a bare-metal
+  # backend provides `openkal.random` only if its board has a source, and
+  # clause 6.1 reports that absence at link time rather than here. With the
+  # switch off, `<random>` does not declare the class, while `src/random.cpp`
+  # defines its members unconditionally --- the file carries no guard of its
+  # own, unlike the filesystem sources:
+  #
+  #     llvm/libcxx/src/random.cpp:68:1:
+  #         error: use of undeclared identifier 'random_device'
+  #
+  # ⚠️ The exclusion was removed together with the hosted one when openkal
+  # gained an entropy source, and the two are not the same decision: the
+  # hosted configuration turned the switch ON, and this one did not.
+  "!llvm/libcxx/src/random.cpp",
+
   "llvm/compiler-rt/lib/builtins/*.c",
   "!llvm/compiler-rt/lib/builtins/atomic*.c",
   "!llvm/compiler-rt/lib/builtins/clear_cache.c",
