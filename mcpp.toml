@@ -198,7 +198,7 @@ sources = [
 cflags = ["-DDISABLE_AARCH64_FMV=1"]
 
 [dependencies]
-openkal-musl = "0.3.4"
+openkal-musl = "0.3.5"
 
 [build]
 cxx_standard = "c++23"
