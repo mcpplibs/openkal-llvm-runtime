@@ -17,7 +17,7 @@ on:
   workflow_dispatch:
 
 env:
-  MCPP_VERSION: 2026.8.24.4
+  MCPP_VERSION: 2026.8.26.2
   XLINGS_VERSION: v2026.8.17.2
   XLINGS_NON_INTERACTIVE: '1'
 
