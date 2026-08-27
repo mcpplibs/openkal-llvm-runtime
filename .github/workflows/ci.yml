@@ -51,64 +51,31 @@ jobs:
           echo "$HOME/.xlings/subos/current/bin" >> "$GITHUB_PATH"
 
       - name: Install mcpp
-        run: |
-          # THE PIN MAY NAME A RELEASE THIS RUN IS VALIDATING, which does not
-          # exist yet --- that is what MCPP_SOURCE_REF is for. Bootstrap from
-          # whatever the index has; the block below replaces it with the build
-          # under review, and the pin is what an ordinary run tests.
-          if [ -n "${MCPP_SOURCE_REF:-}" ]; then
-            xlings update > /dev/null 2>&1 || true
-            xlings install mcpp -y -g
-          else
-            for attempt in 1 2 3 4 5 6; do
-              xlings update > /dev/null 2>&1 || true
-              if xlings install "mcpp@$MCPP_VERSION" -y -g; then break; fi
-              if [ "$attempt" = 6 ]; then
-                echo "::error::mcpp@$MCPP_VERSION never appeared in the index"; exit 1
-              fi
-              sleep 60
-            done
-          fi
-          mcpp --version
-          mcpp self config --mirror GLOBAL
+        run: bash tools/install-mcpp.sh
 
-          # CROSS-VALIDATION: BUILD THE mcpp UNDER REVIEW AND USE THAT ONE.
-          #
-          # Empty in the ordinary run, so this job keeps testing the released
-          # mcpp the pin above names. Set it --- through the workflow_dispatch
-          # input or the repository variable --- and the same job runs against
-          # that source.
-          #
-          # THIS REPOSITORY HAD NO SUCH MECHANISM WHILE EVERY OTHER ONE IN THE
-          # ECOSYSTEM DID, so an engine change could be validated against seven
-          # repositories and not against the one that carries a C++ standard
-          # library. That is the repository where a change to how a target side
-          # is assembled shows first, because a standard library is configured
-          # for one C library and compiled against its headers.
-          #
-          # The released mcpp installed above is the bootstrap that compiles it;
-          # mcpp builds itself and there is no other compiler for it here.
-          if [ -n "${MCPP_SOURCE_REF:-}" ]; then
-            src="$RUNNER_TEMP/mcpp-src"
-            [ -d "$src" ] || git clone --quiet --depth 1 \
-              --branch "$MCPP_SOURCE_REF" \
-              https://github.com/mcpp-community/mcpp.git "$src"
-            # The clone's own workspace pin must not decide which mcpp builds it.
-            # `.xlings.json` at mcpp's root pins the mcpp that compiles mcpp and
-            # does not move when mcpp is released, so a build inside the checkout
-            # obeys it and tries to install a version the index may no longer
-            # carry. What is wanted is the source compiled by the mcpp installed
-            # above, which is what removing the file leaves.
-            rm -f "$src/.xlings.json"
-            ( cd "$src" && mcpp build --release )
-            built=$(find "$src/target" -type f \
-                    \( -name mcpp -o -name mcpp.exe \) | head -1)
-            [ -n "$built" ] || { echo "::error::mcpp did not build from $MCPP_SOURCE_REF"; exit 1; }
-            echo "$(cd "$(dirname "$built")" && pwd)" >> "$GITHUB_PATH"
-            # Reported, because a PATH entry that does not win looks exactly like
-            # one that does until something is built with the wrong engine.
-            echo "under review: $("$built" --version)  (from $MCPP_SOURCE_REF)"
+      # ⭐ THE ENGINE EVERY STEP BELOW WILL USE, COMPARED AGAINST THE ONE BUILT.
+      #
+      # The step above appends a directory to GITHUB_PATH, which governs the
+      # steps that follow it, so that step cannot observe its own effect. Whether
+      # the appended spelling is one the runner accepts is a property of the
+      # runner and differs between hosts. Left unasserted, a cross-validation run
+      # on a host that ignores it builds this ecosystem with the released engine
+      # and reports the result as though the change under review had been tested.
+      - name: The engine on PATH is the one under review
+        run: |
+          set -euo pipefail
+          if [ -z "${MCPP_UNDER_REVIEW:-}" ]; then
+            echo "  no source reference: this run tests $(mcpp --version)"
+            exit 0
           fi
+          on_path=$(mcpp --version | awk '{print $2}')
+          if [ "$on_path" != "$MCPP_UNDER_REVIEW" ]; then
+            echo "::error::PATH resolves mcpp $on_path, and the build under review is $MCPP_UNDER_REVIEW"
+            echo "        the directory appended to GITHUB_PATH did not take effect on this host"
+            command -v mcpp
+            exit 1
+          fi
+          echo "  every step below runs $on_path, built from $MCPP_SOURCE_REF"
 
       - name: Select the toolchain
         run: |
@@ -117,91 +84,9 @@ jobs:
           mcpp toolchain default "$spec"
 
       # THE C LIBRARY THIS RUNTIME IS CONFIGURED FOR, AS WRITTEN ON THE BRANCH
-      # UNDER TEST RATHER THAN AS PUBLISHED.
-      #
-      # This package declares openkal-musl by version, which is what a published
-      # manifest must say. A change that spans the two repositories cannot be
-      # tested that way: the version named here does not exist in the index until
-      # the other half is released, and the run fails with
-      #
-      #     E_NOT_FOUND: package 'openkal-musl@<version>' not found in the
-      #     synced index
-      #
-      # --- which reads as a mistake in this manifest and is nothing of the kind.
-      #
-      # The other repositories in this ecosystem solve it by substituting a
-      # working tree, and this one now does the same. The substitution is
-      # asserted rather than assumed: one that matched nothing would leave the
-      # manifest naming a version, the resolver would fetch a published C
-      # library, and the run would report on that one while appearing to report
-      # on this branch.
-      - name: The C library, as written on this branch
-        run: |
-          set -euo pipefail
-          branch='${{ github.head_ref || github.ref_name }}'
-          git clone --quiet https://github.com/mcpplibs/openkal-musl.git .musl
-          if git -C .musl rev-parse --verify --quiet "origin/$branch" > /dev/null; then
-            git -C .musl checkout --quiet "origin/$branch"
-            echo "openkal-musl is at $branch $(git -C .musl rev-parse --short HEAD)"
-          else
-            echo "openkal-musl has no $branch; its default branch is used" \
-                 "($(git -C .musl rev-parse --short HEAD))"
-          fi
-
-          # openkal-musl reaches the specification by whatever its own manifest
-          # says. That becomes the same working tree, so that the whole stack
-          # under test is the one written on this branch.
-          git clone --quiet https://github.com/mcpplibs/openkal.git .spec
-          if git -C .spec rev-parse --verify --quiet "origin/$branch" > /dev/null; then
-            git -C .spec checkout --quiet "origin/$branch"
-          fi
-
-          # ⚠️ EVERY BACKEND THE C LIBRARY NAMES, DISCOVERED RATHER THAN LISTED.
-          #
-          # openkal-musl names a backend per target: linux, macos, windows and
-          # opensbi, each conditional. Their versions all move with a change that
-          # spans these repositories, so each one left unsubstituted fails the
-          # same way, one link further down:
-          #
-          #     E_NOT_FOUND: package 'openkal-linux@0.6.0'   (the host build)
-          #     E_NOT_FOUND: package 'openkal-opensbi@0.2.0' (the bare-metal one)
-          #
-          # I fixed the first by naming it, and the second appeared. A list
-          # written by hand is a list that is one entry short, so the set is read
-          # out of the manifest instead.
-          for backend in $(grep -oE '^openkal-[a-z]+ = \{ version' .musl/mcpp.toml | cut -d' ' -f1); do
-            git clone --quiet "https://github.com/mcpplibs/$backend.git" ".$backend"
-            if git -C ".$backend" rev-parse --verify --quiet "origin/$branch" > /dev/null; then
-              git -C ".$backend" checkout --quiet "origin/$branch"
-            fi
-            here="$(cd ".$backend" && pwd)"
-            # The backend reaches the specification too, and by whatever form its
-            # own manifest uses.
-            sed -i -E "s|^openkal = .*$|openkal = { path = \"$(cd .spec && pwd)\" }|" ".$backend/mcpp.toml"
-            sed -i -E "s|^$backend = \\{ version = \"[^\"]*\"(.*)$|$backend = { path = \"$here\"\\1|" \
-                .musl/mcpp.toml
-            grep -q "path = \"$here\"" .musl/mcpp.toml \
-              || { echo "::error::$backend was not substituted"; exit 1; }
-            echo "  $backend -> working tree"
-          done
-
-          spec="$(cd .spec && pwd)"
-          musl="$(cd .musl && pwd)"
-          sed -i -E "s|^openkal = .*$|openkal = { path = \"$spec\" }|" .musl/mcpp.toml
-          sed -i -E "s|^openkal-musl = .*$|openkal-musl = { path = \"$musl\" }|" mcpp.toml
-
-          grep -q "path = \"$musl\"" mcpp.toml \
-            || { echo "::error::the C library substitution matched nothing"; exit 1; }
-          grep -q "path = \"$spec\"" .musl/mcpp.toml \
-            || { echo "::error::the specification substitution matched nothing"; exit 1; }
-
-          # ⚠️ THE LAST CHECK IS THE ONE THAT WOULD HAVE CAUGHT BOTH FAILURES:
-          # nothing anywhere in the substituted graph still names a version.
-          if grep -nE '^openkal[a-z-]* = (\"|\{ version)' .musl/mcpp.toml mcpp.toml; then
-            echo "::error::something in the graph still names a version rather than a tree"
-            exit 1
-          fi
-          echo "the whole stack names working trees, and nothing in it names a version"
+      # UNDER TEST RATHER THAN AS PUBLISHED. The reasoning is in the script.
+      - name: The stack, as written on this branch
+        run: bash tools/branch-graph.sh '${{ github.head_ref || github.ref_name }}'
 
       - name: The runtime builds
         run: mcpp build
@@ -581,22 +466,48 @@ jobs:
           "$env:USERPROFILE\.xlings\subos\current\bin" | Out-File -FilePath $env:GITHUB_PATH -Encoding utf8 -Append
 
       - name: Install mcpp
+        run: bash tools/install-mcpp.sh
+
+      # ⭐ THE ENGINE EVERY STEP BELOW WILL USE, COMPARED AGAINST THE ONE BUILT.
+      #
+      # The step above appends a directory to GITHUB_PATH, which governs the
+      # steps that follow it, so that step cannot observe its own effect. Whether
+      # the appended spelling is one the runner accepts is a property of the
+      # runner and differs between hosts. Left unasserted, a cross-validation run
+      # on a host that ignores it builds this ecosystem with the released engine
+      # and reports the result as though the change under review had been tested.
+      - name: The engine on PATH is the one under review
         run: |
-          for attempt in 1 2 3 4 5 6; do
-            xlings update > /dev/null 2>&1 || true
-            if xlings install "mcpp@$MCPP_VERSION" -y -g; then break; fi
-            if [ "$attempt" = 6 ]; then
-              echo "::error::mcpp@$MCPP_VERSION never appeared in the index"
-              exit 1
-            fi
-            sleep 60
-          done
-          mcpp self config --mirror GLOBAL
+          set -euo pipefail
+          if [ -z "${MCPP_UNDER_REVIEW:-}" ]; then
+            echo "  no source reference: this run tests $(mcpp --version)"
+            exit 0
+          fi
+          on_path=$(mcpp --version | awk '{print $2}')
+          if [ "$on_path" != "$MCPP_UNDER_REVIEW" ]; then
+            echo "::error::PATH resolves mcpp $on_path, and the build under review is $MCPP_UNDER_REVIEW"
+            echo "        the directory appended to GITHUB_PATH did not take effect on this host"
+            command -v mcpp
+            exit 1
+          fi
+          echo "  every step below runs $on_path, built from $MCPP_SOURCE_REF"
+
+      # ⭐ THE SAME ENGINE AND THE SAME STACK AS THE LINUX JOB, FROM A DIFFERENT
+      # HOST. This job had neither: it installed the released engine and
+      # resolved this ecosystem from the index, so a change spanning these
+      # repositories was validated on one host of three and reported as
+      # validated everywhere.
+      - name: Select the toolchain
+        run: |
+          set -euo pipefail
           # ⚠️ INSTALL, THEN SELECT. `toolchain default` names a toolchain and
           # does not fetch one, so selecting an absent payload fails with
           # `llvm@22.1.8 is not installed` — measured on both rows of this job.
           mcpp toolchain install llvm 22.1.8
           mcpp toolchain default 'llvm@22.1.8'
+
+      - name: The stack, as written on this branch
+        run: bash tools/branch-graph.sh '${{ github.head_ref || github.ref_name }}'
 
       - name: Every target, from this host
         run: |
