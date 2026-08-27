@@ -23,7 +23,7 @@ on:
 
 env:
   MCPP_SOURCE_REF: ${{ github.event.inputs.mcpp_ref || vars.MCPP_SOURCE_REF }}
-  MCPP_VERSION: 2026.8.26.2
+  MCPP_VERSION: 2026.8.27.1
   XLINGS_VERSION: v2026.8.17.2
   XLINGS_NON_INTERACTIVE: '1'
 
