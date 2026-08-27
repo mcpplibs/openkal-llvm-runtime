@@ -15,8 +15,14 @@ on:
     branches: [main]
   pull_request:
   workflow_dispatch:
+    inputs:
+      mcpp_ref:
+        description: "Branch of mcpp-community/mcpp to build and test against (empty = the released pin)"
+        required: false
+        default: ""
 
 env:
+  MCPP_SOURCE_REF: ${{ github.event.inputs.mcpp_ref || vars.MCPP_SOURCE_REF }}
   MCPP_VERSION: 2026.8.24.4
   XLINGS_VERSION: v2026.8.17.2
   XLINGS_NON_INTERACTIVE: '1'
@@ -46,16 +52,63 @@ jobs:
 
       - name: Install mcpp
         run: |
-          for attempt in 1 2 3 4 5 6; do
+          # THE PIN MAY NAME A RELEASE THIS RUN IS VALIDATING, which does not
+          # exist yet --- that is what MCPP_SOURCE_REF is for. Bootstrap from
+          # whatever the index has; the block below replaces it with the build
+          # under review, and the pin is what an ordinary run tests.
+          if [ -n "${MCPP_SOURCE_REF:-}" ]; then
             xlings update > /dev/null 2>&1 || true
-            if xlings install "mcpp@$MCPP_VERSION" -y -g; then break; fi
-            if [ "$attempt" = 6 ]; then
-              echo "::error::mcpp@$MCPP_VERSION never appeared in the index"; exit 1
-            fi
-            sleep 60
-          done
+            xlings install mcpp -y -g
+          else
+            for attempt in 1 2 3 4 5 6; do
+              xlings update > /dev/null 2>&1 || true
+              if xlings install "mcpp@$MCPP_VERSION" -y -g; then break; fi
+              if [ "$attempt" = 6 ]; then
+                echo "::error::mcpp@$MCPP_VERSION never appeared in the index"; exit 1
+              fi
+              sleep 60
+            done
+          fi
           mcpp --version
           mcpp self config --mirror GLOBAL
+
+          # CROSS-VALIDATION: BUILD THE mcpp UNDER REVIEW AND USE THAT ONE.
+          #
+          # Empty in the ordinary run, so this job keeps testing the released
+          # mcpp the pin above names. Set it --- through the workflow_dispatch
+          # input or the repository variable --- and the same job runs against
+          # that source.
+          #
+          # THIS REPOSITORY HAD NO SUCH MECHANISM WHILE EVERY OTHER ONE IN THE
+          # ECOSYSTEM DID, so an engine change could be validated against seven
+          # repositories and not against the one that carries a C++ standard
+          # library. That is the repository where a change to how a target side
+          # is assembled shows first, because a standard library is configured
+          # for one C library and compiled against its headers.
+          #
+          # The released mcpp installed above is the bootstrap that compiles it;
+          # mcpp builds itself and there is no other compiler for it here.
+          if [ -n "${MCPP_SOURCE_REF:-}" ]; then
+            src="$RUNNER_TEMP/mcpp-src"
+            [ -d "$src" ] || git clone --quiet --depth 1 \
+              --branch "$MCPP_SOURCE_REF" \
+              https://github.com/mcpp-community/mcpp.git "$src"
+            # The clone's own workspace pin must not decide which mcpp builds it.
+            # `.xlings.json` at mcpp's root pins the mcpp that compiles mcpp and
+            # does not move when mcpp is released, so a build inside the checkout
+            # obeys it and tries to install a version the index may no longer
+            # carry. What is wanted is the source compiled by the mcpp installed
+            # above, which is what removing the file leaves.
+            rm -f "$src/.xlings.json"
+            ( cd "$src" && mcpp build --release )
+            built=$(find "$src/target" -type f \
+                    \( -name mcpp -o -name mcpp.exe \) | head -1)
+            [ -n "$built" ] || { echo "::error::mcpp did not build from $MCPP_SOURCE_REF"; exit 1; }
+            echo "$(cd "$(dirname "$built")" && pwd)" >> "$GITHUB_PATH"
+            # Reported, because a PATH entry that does not win looks exactly like
+            # one that does until something is built with the wrong engine.
+            echo "under review: $("$built" --version)  (from $MCPP_SOURCE_REF)"
+          fi
 
       - name: Select the toolchain
         run: |
