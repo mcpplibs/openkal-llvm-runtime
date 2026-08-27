@@ -17,3 +17,4 @@ mcpp.lock
 .musl/
 .spec/
 .impl/
+.openkal-*/

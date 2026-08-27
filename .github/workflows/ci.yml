@@ -156,36 +156,52 @@ jobs:
             git -C .spec checkout --quiet "origin/$branch"
           fi
 
-          # ⚠️ THE WHOLE CHAIN, NOT THE FIRST TWO LINKS. openkal-musl names a
-          # BACKEND as well as the specification, and that backend's version
-          # moves with the same change:
+          # ⚠️ EVERY BACKEND THE C LIBRARY NAMES, DISCOVERED RATHER THAN LISTED.
           #
-          #     E_NOT_FOUND: package 'openkal-linux@0.6.0' not found
+          # openkal-musl names a backend per target: linux, macos, windows and
+          # opensbi, each conditional. Their versions all move with a change that
+          # spans these repositories, so each one left unsubstituted fails the
+          # same way, one link further down:
           #
-          # Substituting two of the three left the third naming a version the
-          # index does not have yet, which is the same failure one link further
-          # down. Every dependency that moves with this change is substituted.
-          git clone --quiet https://github.com/mcpplibs/openkal-linux.git .impl
-          if git -C .impl rev-parse --verify --quiet "origin/$branch" > /dev/null; then
-            git -C .impl checkout --quiet "origin/$branch"
-          fi
+          #     E_NOT_FOUND: package 'openkal-linux@0.6.0'   (the host build)
+          #     E_NOT_FOUND: package 'openkal-opensbi@0.2.0' (the bare-metal one)
+          #
+          # I fixed the first by naming it, and the second appeared. A list
+          # written by hand is a list that is one entry short, so the set is read
+          # out of the manifest instead.
+          for backend in $(grep -oE '^openkal-[a-z]+ = \{ version' .musl/mcpp.toml | cut -d' ' -f1); do
+            git clone --quiet "https://github.com/mcpplibs/$backend.git" ".$backend"
+            if git -C ".$backend" rev-parse --verify --quiet "origin/$branch" > /dev/null; then
+              git -C ".$backend" checkout --quiet "origin/$branch"
+            fi
+            here="$(cd ".$backend" && pwd)"
+            # The backend reaches the specification too, and by whatever form its
+            # own manifest uses.
+            sed -i -E "s|^openkal = .*$|openkal = { path = \"$(cd .spec && pwd)\" }|" ".$backend/mcpp.toml"
+            sed -i -E "s|^$backend = \\{ version = \"[^\"]*\"(.*)$|$backend = { path = \"$here\"\\1|" \
+                .musl/mcpp.toml
+            grep -q "path = \"$here\"" .musl/mcpp.toml \
+              || { echo "::error::$backend was not substituted"; exit 1; }
+            echo "  $backend -> working tree"
+          done
 
           spec="$(cd .spec && pwd)"
           musl="$(cd .musl && pwd)"
-          impl="$(cd .impl && pwd)"
-
-          sed -i -E "s|^openkal = .*$|openkal = { path = \"$spec\" }|" .impl/mcpp.toml
           sed -i -E "s|^openkal = .*$|openkal = { path = \"$spec\" }|" .musl/mcpp.toml
-          sed -i -E "s|^openkal-linux = \\{ version = \"[^\"]*\"(.*)$|openkal-linux = { path = \"$impl\"\\1|" \
-              .musl/mcpp.toml
           sed -i -E "s|^openkal-musl = .*$|openkal-musl = { path = \"$musl\" }|" mcpp.toml
 
-          for pair in "mcpp.toml:$musl" ".musl/mcpp.toml:$spec" ".musl/mcpp.toml:$impl" ".impl/mcpp.toml:$spec"; do
-            f="${pair%%:*}"; want="${pair##*:}"
-            grep -q "path = \"$want\"" "$f" \
-              || { echo "::error::a substitution matched nothing: $f should name $want"; exit 1; }
-          done
-          echo "the whole stack names working trees: runtime -> musl -> {openkal, openkal-linux}"
+          grep -q "path = \"$musl\"" mcpp.toml \
+            || { echo "::error::the C library substitution matched nothing"; exit 1; }
+          grep -q "path = \"$spec\"" .musl/mcpp.toml \
+            || { echo "::error::the specification substitution matched nothing"; exit 1; }
+
+          # ⚠️ THE LAST CHECK IS THE ONE THAT WOULD HAVE CAUGHT BOTH FAILURES:
+          # nothing anywhere in the substituted graph still names a version.
+          if grep -nE '^openkal[a-z-]* = (\"|\{ version)' .musl/mcpp.toml mcpp.toml; then
+            echo "::error::something in the graph still names a version rather than a tree"
+            exit 1
+          fi
+          echo "the whole stack names working trees, and nothing in it names a version"
 
       - name: The runtime builds
         run: mcpp build
