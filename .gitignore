@@ -16,3 +16,4 @@ mcpp.lock
 # The working trees the workflow substitutes for published dependencies.
 .musl/
 .spec/
+.impl/
