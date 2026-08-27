@@ -18,3 +18,7 @@ mcpp.lock
 .spec/
 .impl/
 .openkal-*/
+
+# What examples/cxx writes while it runs, if it stops before removing it.
+cxx-probe.d/
+out.log

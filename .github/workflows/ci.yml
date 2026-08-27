@@ -100,10 +100,20 @@ jobs:
       # _Unwind_Backtrace walking zero frames --- and nothing named the cause.
       # So the throw is the check, and the destructor beside it is what says the
       # unwind was correct rather than merely non-fatal.
-      - name: A C++ program above it throws across frames and catches
+      # ⭐ THE UNWINDER, AND EVERY POSITION `__config_site` DECLARES.
+      #
+      # The throw and the destructor beside it are what say the runtime is
+      # really there. The rest of the probe asks whether the CLAIMS this package
+      # makes about the environment beneath are true: `std::filesystem` over
+      # openkal.fs, `std::random_device` over openkal.random, and the two
+      # operations openkal has no atom for --- which must be REFUSED rather than
+      # ignored, and which a probe checking only the supported ones would pass
+      # for a port that silently accepted them.
+      - name: A C++ program above it throws, catches, and uses what is declared
         run: |
           cd examples/cxx && mcpp run 2>&1 | tee out.log
           grep -q -- '-- failures: 0 --' out.log
+          ! grep -q '^FAIL:' out.log
 
       - name: import std above it
         run: |

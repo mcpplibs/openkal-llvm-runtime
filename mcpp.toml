@@ -1,7 +1,7 @@
 [package]
 namespace   = "mcpplibs"
 name        = "openkal-llvm-runtime"
-version     = "0.2.0"
+version     = "0.3.0"
 description = "LLVM's C++ runtime libraries — libc++, libc++abi and libunwind — configured for openkal-musl rather than for a host C library."
 license     = "Apache-2.0"
 authors     = ["mcpplibs"]
@@ -147,58 +147,68 @@ std-module-flags = [
 # criterion the whole package exists to satisfy is the one openkal keeps
 # returning to --- whether an implementation has been configured FOR this
 # target, not whether its headers can be found.
-# ⭐⭐ outline-atomics 的 125 个辅助函数,由本包供给 —— 因为本包就是那份
-# compiler-rt。
+# ⭐⭐ THE 125 OUTLINE-ATOMICS HELPERS ARE SUPPLIED BY THIS PACKAGE, BECAUSE
+# THIS PACKAGE IS THAT compiler-rt.
 #
-# `--rtlib=compiler-rt` 让 clang 在 aarch64 上开启 `+outline-atomics`,
-# 而它是对的:该特性的 `__aarch64_*` 辅助函数本来就住在 compiler-rt 里。
-# 此前本包不产出它们,于是特性被开启而没有人实现:
+# `--rtlib=compiler-rt` makes clang enable `+outline-atomics` on aarch64, and it
+# is right to: the feature's `__aarch64_*` helpers live in compiler-rt. This
+# package did not produce them, so the feature was enabled and nobody
+# implemented it:
 #
 #     ld.lld: error: undefined symbol: __aarch64_swp4_acq
 #     ld.lld: error: undefined symbol: __aarch64_cas8_acq_rel
 #
-# ⚠️ 引用来自 `openkal-linux/src/memory.o` 与 `openkal-musl/port/src/okm_fd.o`
-# —— 两个对这件事一无所知、只是用了原子操作的包。缺的是这份运行时该有的东西。
+# ⚠️ The references came from `openkal-linux/src/memory.o` and
+# `openkal-musl/port/src/okm_fd.o` --- two packages that know nothing about any
+# of this and merely used an atomic operation. What was missing was something
+# this runtime is supposed to carry.
 #
-# upstream 的做法是把 `aarch64/lse.S` 编 125 遍,每遍给不同的
-# `-DL_<pat> -DSIZE=<n> -DMODEL=<m>`(6 模式 × 5 尺寸 × 5 模型,
-# 非 cas 的 16 字节档不存在)。一个用 glob 表达 sources 的清单传不了
-# per-file 定义 —— 于是每个组合成为一个**自己声明宏、再 include 共享正文**
-# 的文件。正文是 upstream 的,未经修改,仍在原处。
+# Upstream compiles `aarch64/lse.S` 125 times, each with a different
+# `-DL_<pat> -DSIZE=<n> -DMODEL=<m>` (6 patterns x 5 sizes x 5 models; the
+# 16-byte width exists only for `cas`). A manifest that states its sources as a
+# glob cannot carry a per-file definition --- so each combination becomes a file
+# that DECLARES THE MACROS ITSELF AND THEN INCLUDES THE SHARED BODY. The body is
+# upstream's, unmodified, and stays where it is.
 #
-# ⭐ 这是把宏从**命令行**移到**文件内部**,而不是复制 125 份实现。
+# ⭐ That moves the macros from the COMMAND LINE into the FILE, rather than
+# copying the implementation 125 times.
 [target.'cfg(arch = "aarch64")'.build]
 sources = [
   "llvm-generated/outline-atomics/*.S",
-  # ⚠️ 并且定义那个探测变量的文件。这 125 个辅助函数每一个都读
-  # `__aarch64_have_lse_atomics` —— 它在运行时决定走 LSE 指令还是
-  # load/store-exclusive 循环。少了它:
+  # ⚠️ And the file that defines the probe. Every one of the 125 helpers reads
+  # `__aarch64_have_lse_atomics`, which decides at run time between the LSE
+  # instructions and a load/store-exclusive loop. Without it:
   #
   #     ld.lld: error: undefined hidden symbol: __aarch64_have_lse_atomics
   #
-  # ⭐ 它在 `cpu_model/aarch64.c`,而 `[build]` 段的 glob 是
-  # `llvm/compiler-rt/lib/builtins/*.c` —— **不含子目录**,所以这个文件
-  # 从未被编过。upstream 把它列在 `aarch64_SOURCES` 里,与本节同一批。
+  # ⭐ It is in `cpu_model/aarch64.c`, and the `[build]` section's glob is
+  # `llvm/compiler-rt/lib/builtins/*.c` --- WHICH DOES NOT DESCEND INTO
+  # SUBDIRECTORIES, so that file had never been compiled. Upstream lists it in
+  # `aarch64_SOURCES`, in the same set as this section.
   "llvm/compiler-rt/lib/builtins/cpu_model/aarch64.c",
 ]
-# ⚠️ FMV 关掉,而它不是可选的清理 —— 那半个文件在 macOS 宿主上根本编不过。
+# ⚠️ FUNCTION MULTI-VERSIONING IS TURNED OFF, AND THAT IS NOT OPTIONAL TIDYING:
+# that half of the file does not compile on a macOS host at all.
 #
-# `cpu_model/aarch64.c` 的后半是函数多版本(FMV)的实现,按宿主分支 include
-# 一个 `.inc`。Apple 那支拉的是系统头:
+# The second half of `cpu_model/aarch64.c` implements function multi-versioning,
+# and includes one `.inc` per host. Apple's branch reaches for a system header:
 #
 #     aarch64/fmv/apple.inc:1:10: fatal error: 'TargetConditionals.h' file not found
 #
-# 而本包的 `include_dirs` 刻意不含任何来自机器的路径 —— 见该段的
-# ⭐⭐ NOTHING FROM THE MACHINE。⚠️ 本机 Linux 上编得过,CI 的 macOS 那格才炸,
-# 是典型的「一台宿主看不见」的形状。
+# and this package's `include_dirs` deliberately contains no path that comes
+# from the machine --- see ⭐⭐ NOTHING FROM THE MACHINE in that section.
+# ⚠️ It compiles on this Linux machine and fails only on the macOS row of
+# continuous integration, which is the shape one host cannot see.
 #
-# ⭐ 而本包**不需要** FMV:要的只是 `__aarch64_have_lse_atomics`,
-# 它定义在 `#if !defined(DISABLE_AARCH64_FMV)` 之外。upstream 自己也有这个
-# 开关(`COMPILER_RT_DISABLE_AARCH64_FMV`),所以这是走它给的门,不是绕过。
+# ⭐ And this package does NOT need multi-versioning: what it wants is
+# `__aarch64_have_lse_atomics`, which is defined outside
+# `#if !defined(DISABLE_AARCH64_FMV)`. Upstream has the same switch
+# (`COMPILER_RT_DISABLE_AARCH64_FMV`), so this goes through the door upstream
+# provides rather than around it.
 cflags = ["-DDISABLE_AARCH64_FMV=1"]
 
 [dependencies]
-openkal-musl = "0.4.0"
+openkal-musl = "0.5.0"
 
 [build]
 cxx_standard = "c++23"

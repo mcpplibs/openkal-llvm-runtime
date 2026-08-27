@@ -6,7 +6,7 @@ C library.
 
 ```toml
 [dependencies]
-openkal-llvm-runtime = "0.1.0"
+openkal-llvm-runtime = "0.3.0"
 ```
 
 A C++ standard library is not portable in the way a program is. It is
@@ -31,13 +31,14 @@ itself builds separately from the compiler.
 
 ## The one thing the configuration decides
 
-`llvm-generated/generic/__config_site` is libc++'s configure product. Two
-positions in it carry the whole of what makes this package different from the
-one a toolchain ships:
+`llvm-generated/generic/__config_site` is libc++'s configure product, and every
+position in it is a **claim about the environment beneath**:
 
 ```c
-#define _LIBCPP_HAS_MUSL_LIBC     1   /* the C library beneath is musl's */
-#define _LIBCPP_HAS_RANDOM_DEVICE 0   /* openkal has no source of entropy */
+#define _LIBCPP_HAS_MUSL_LIBC     1   /* the C library beneath is musl's   */
+#define _LIBCPP_HAS_RANDOM_DEVICE 1   /* openkal.random reaches a source   */
+#define _LIBCPP_HAS_FILESYSTEM    1   /* openkal.fs, and its sources built */
+#define _LIBCPP_HAS_TERMINAL      1   /* isatty answers, rather than lying */
 ```
 
 The first was measured rather than assumed. With it at `0` — the value a
@@ -49,9 +50,17 @@ __locale:439: error: unknown rune table for this platform
               -- do you mean to define _LIBCPP_PROVIDES_DEFAULT_RUNE_TABLE?
 ```
 
-With it at `1`, none. The second follows from openkal reporting `ENOSYS` for
-entropy: `std::random_device` is not built, and a program that names it is told
-by the linker.
+With it at `1`, none.
+
+⚠️ **A claim that drifts from what the port provides fails neither the build nor
+the link.** It produces a program that takes a path the environment cannot
+support, and reports nothing. `_LIBCPP_HAS_RANDOM_DEVICE` was `0` until openkal
+gained `openkal.random`; `_LIBCPP_HAS_TERMINAL` was `1` while every `isatty`
+over the port beneath returned `0` — for a real terminal as readily as for a
+pipe — so `std::print` never took its terminal path and nothing failed. The
+remedy there was to repair the port rather than withdraw the claim, and the
+workflow now reconciles the two rather than checking once and assuming
+afterwards.
 
 ## Two configurations, and why there are two
 
@@ -95,6 +104,17 @@ whether a hosted standard library is *present*.
 - values returned through several frames
 - **an exception thrown across three frames and caught**
 - **a destructor run while the stack is unwound**
+- `hidden`, `weak` and `weak_alias` as the program's own identifiers — the C++
+  half of `mcpplibs/openkal-musl#13`, where `hidden` was given C *linkage*
+  rather than emptied and so failed differently from the C case
+- `std::filesystem` — a directory created, a file written, enumerated, copied,
+  its size reported, and the whole removed
+- **`std::filesystem::permissions` and `create_symlink` refused, not ignored** —
+  openkal carries a boolean `writable` rather than a mode word, and has no
+  operation that creates a link. A probe checking only the supported operations
+  would pass just as well for a port that silently accepted these two
+- `std::random_device` — three draws that **differ**, which a source stuck at a
+  constant would not satisfy and "a number was produced" would
 
 `examples/import-std` asserts the other half: `import std;` — the module, not the
 headers — with `std::ranges::sort` and `std::println`.
