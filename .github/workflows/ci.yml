@@ -116,6 +116,57 @@ jobs:
           mcpp toolchain install "${spec%@*}" "${spec#*@}"
           mcpp toolchain default "$spec"
 
+      # THE C LIBRARY THIS RUNTIME IS CONFIGURED FOR, AS WRITTEN ON THE BRANCH
+      # UNDER TEST RATHER THAN AS PUBLISHED.
+      #
+      # This package declares openkal-musl by version, which is what a published
+      # manifest must say. A change that spans the two repositories cannot be
+      # tested that way: the version named here does not exist in the index until
+      # the other half is released, and the run fails with
+      #
+      #     E_NOT_FOUND: package 'openkal-musl@<version>' not found in the
+      #     synced index
+      #
+      # --- which reads as a mistake in this manifest and is nothing of the kind.
+      #
+      # The other repositories in this ecosystem solve it by substituting a
+      # working tree, and this one now does the same. The substitution is
+      # asserted rather than assumed: one that matched nothing would leave the
+      # manifest naming a version, the resolver would fetch a published C
+      # library, and the run would report on that one while appearing to report
+      # on this branch.
+      - name: The C library, as written on this branch
+        run: |
+          set -euo pipefail
+          branch='${{ github.head_ref || github.ref_name }}'
+          git clone --quiet https://github.com/mcpplibs/openkal-musl.git .musl
+          if git -C .musl rev-parse --verify --quiet "origin/$branch" > /dev/null; then
+            git -C .musl checkout --quiet "origin/$branch"
+            echo "openkal-musl is at $branch $(git -C .musl rev-parse --short HEAD)"
+          else
+            echo "openkal-musl has no $branch; its default branch is used" \
+                 "($(git -C .musl rev-parse --short HEAD))"
+          fi
+
+          # openkal-musl reaches the specification by whatever its own manifest
+          # says. That becomes the same working tree, so that the whole stack
+          # under test is the one written on this branch.
+          git clone --quiet https://github.com/mcpplibs/openkal.git .spec
+          if git -C .spec rev-parse --verify --quiet "origin/$branch" > /dev/null; then
+            git -C .spec checkout --quiet "origin/$branch"
+          fi
+
+          spec="$(cd .spec && pwd)"
+          musl="$(cd .musl && pwd)"
+          sed -i -E "s|^openkal = .*$|openkal = { path = \"$spec\" }|" .musl/mcpp.toml
+          sed -i -E "s|^openkal-musl = .*$|openkal-musl = { path = \"$musl\" }|" mcpp.toml
+
+          grep -q "path = \"$musl\"" mcpp.toml \
+            || { echo "::error::the C library substitution matched nothing"; exit 1; }
+          grep -q "path = \"$spec\"" .musl/mcpp.toml \
+            || { echo "::error::the specification substitution matched nothing"; exit 1; }
+          echo "openkal-musl = { path = … }, and it reaches openkal the same way"
+
       - name: The runtime builds
         run: mcpp build
 
