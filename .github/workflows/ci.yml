@@ -15,9 +15,15 @@ on:
     branches: [main]
   pull_request:
   workflow_dispatch:
+    inputs:
+      mcpp_ref:
+        description: "Branch of mcpp-community/mcpp to build and test against (empty = the released pin)"
+        required: false
+        default: ""
 
 env:
-  MCPP_VERSION: 2026.8.26.2
+  MCPP_SOURCE_REF: ${{ github.event.inputs.mcpp_ref || vars.MCPP_SOURCE_REF }}
+  MCPP_VERSION: 2026.8.27.1
   XLINGS_VERSION: v2026.8.17.2
   XLINGS_NON_INTERACTIVE: '1'
 
@@ -45,23 +51,42 @@ jobs:
           echo "$HOME/.xlings/subos/current/bin" >> "$GITHUB_PATH"
 
       - name: Install mcpp
+        run: bash tools/install-mcpp.sh
+
+      # ⭐ THE ENGINE EVERY STEP BELOW WILL USE, COMPARED AGAINST THE ONE BUILT.
+      #
+      # The step above appends a directory to GITHUB_PATH, which governs the
+      # steps that follow it, so that step cannot observe its own effect. Whether
+      # the appended spelling is one the runner accepts is a property of the
+      # runner and differs between hosts. Left unasserted, a cross-validation run
+      # on a host that ignores it builds this ecosystem with the released engine
+      # and reports the result as though the change under review had been tested.
+      - name: The engine on PATH is the one under review
         run: |
-          for attempt in 1 2 3 4 5 6; do
-            xlings update > /dev/null 2>&1 || true
-            if xlings install "mcpp@$MCPP_VERSION" -y -g; then break; fi
-            if [ "$attempt" = 6 ]; then
-              echo "::error::mcpp@$MCPP_VERSION never appeared in the index"; exit 1
-            fi
-            sleep 60
-          done
-          mcpp --version
-          mcpp self config --mirror GLOBAL
+          set -euo pipefail
+          if [ -z "${MCPP_UNDER_REVIEW:-}" ]; then
+            echo "  no source reference: this run tests $(mcpp --version)"
+            exit 0
+          fi
+          on_path=$(mcpp --version | awk '{print $2}')
+          if [ "$on_path" != "$MCPP_UNDER_REVIEW" ]; then
+            echo "::error::PATH resolves mcpp $on_path, and the build under review is $MCPP_UNDER_REVIEW"
+            echo "        the directory appended to GITHUB_PATH did not take effect on this host"
+            command -v mcpp
+            exit 1
+          fi
+          echo "  every step below runs $on_path, built from $MCPP_SOURCE_REF"
 
       - name: Select the toolchain
         run: |
           spec='${{ matrix.toolchain }}'
           mcpp toolchain install "${spec%@*}" "${spec#*@}"
           mcpp toolchain default "$spec"
+
+      # THE C LIBRARY THIS RUNTIME IS CONFIGURED FOR, AS WRITTEN ON THE BRANCH
+      # UNDER TEST RATHER THAN AS PUBLISHED. The reasoning is in the script.
+      - name: The stack, as written on this branch
+        run: bash tools/branch-graph.sh '${{ github.head_ref || github.ref_name }}'
 
       - name: The runtime builds
         run: mcpp build
@@ -84,6 +109,102 @@ jobs:
         run: |
           cd examples/import-std && mcpp run 2>&1 | tee out.log
           grep -q 'import std above openkal: 2 4 7' out.log
+
+      # WHAT __config_site DECLARES AND WHAT THE PORT BENEATH PROVIDES ARE
+      # RECONCILED HERE, RATHER THAN BEING CHECKED ONCE AND ASSUMED AFTERWARDS.
+      #
+      # `__config_site` is this package's statement about the environment it was
+      # configured for, and the environment is openkal-musl. A statement that
+      # drifts from what the port actually provides does not fail to build and
+      # does not fail to link: it produces a program that takes a path the
+      # environment cannot support, and reports nothing.
+      #
+      # `_LIBCPP_HAS_TERMINAL` is the position where that happened. It gates
+      # `std::__is_posix_terminal`, which is `isatty(fileno(stream))` and nothing
+      # else. The port answered `isatty` with TCGETS while musl asks with
+      # TIOCGWINSZ, so every `isatty` returned 0 --- for a real terminal as
+      # readily as for a pipe --- and `std::print` never took its terminal path.
+      # Nothing failed; a program deciding on colour or on line buffering decided
+      # wrongly and in silence.
+      #
+      # The remedy was to fix the port rather than to withdraw the declaration,
+      # so the declaration is now true and this step is what keeps it true.
+      #
+      # THE CRITERION IS A RELATION AND NOT A VALUE. Asserting "a terminal is
+      # detected" would need a terminal; asserting "a pipe is not" would pass
+      # throughout the defect. What must hold is that the two DIFFER, and that
+      # they differ the way the system's own C library says they do.
+      - name: What the runtime declares is what the port provides
+        run: |
+          set -euo pipefail
+          d="$(mktemp -d)"; mkdir -p "$d/src"
+          cat > "$d/mcpp.toml" <<TOML
+          [package]
+          name    = "termdecl"
+          version = "0.1.0"
+          [dependencies]
+          openkal-llvm-runtime = { path = "$PWD" }
+          [targets.termdecl]
+          kind = "bin"
+          main = "src/main.cpp"
+          TOML
+          sed -i 's/^          //' "$d/mcpp.toml"
+          cat > "$d/src/main.cpp" <<'CPP'
+          #include <cstdio>
+          #include <unistd.h>
+          // The declaration this step exists to reconcile. If the package stops
+          // claiming a terminal, the program says so rather than failing to
+          // compile: the point is to compare the claim against the behaviour,
+          // and a build error would compare nothing.
+          int main() {
+          #if defined(_LIBCPP_HAS_TERMINAL) && _LIBCPP_HAS_TERMINAL
+              std::printf("declared=1 isatty=%d\n", isatty(1));
+          #else
+              std::printf("declared=0 isatty=%d\n", isatty(1));
+          #endif
+          }
+          CPP
+          sed -i 's/^          //' "$d/src/main.cpp"
+          ( cd "$d" && mcpp build )
+          bin="$(find "$d/target" -type f -name termdecl | head -1)"
+          test -n "$bin" || { echo "::error::the probe did not build"; exit 1; }
+
+          # The control: the system's own C library, through the same harness.
+          # Without it a `script` that fails to allocate a pty would make the
+          # runtime look wrong.
+          printf '#include <stdio.h>\n#include <unistd.h>\nint main(void){ printf("%%d\\n", isatty(1)); return 0; }\n' > "$d/ctrl.c"
+          cc "$d/ctrl.c" -o "$d/ctrl"
+          ctrl_pipe="$("$d/ctrl" | cat | tr -d '\r')"
+          ctrl_tty="$(script -qec "$d/ctrl" /dev/null | tr -d '\r' | head -1)"
+          [ "$ctrl_pipe" = 0 ] && [ "$ctrl_tty" = 1 ] \
+            || { echo "::error::the harness cannot tell a pty from a pipe (control gave $ctrl_pipe/$ctrl_tty)"
+                 exit 1; }
+
+          out_pipe="$("$bin" | cat | tr -d '\r')"
+          out_tty="$(script -qec "$bin" /dev/null | tr -d '\r' | head -1)"
+          echo "  control: pipe=$ctrl_pipe tty=$ctrl_tty"
+          echo "  runtime: $out_pipe / $out_tty"
+
+          declared="${out_pipe#declared=}"; declared="${declared%% *}"
+          pipe_v="${out_pipe##*isatty=}"
+          tty_v="${out_tty##*isatty=}"
+
+          if [ "$declared" = 1 ]; then
+            # The claim is that a terminal can be detected, so the two must
+            # differ and must differ as the system's own library does.
+            [ "$pipe_v" = "$ctrl_pipe" ] && [ "$tty_v" = "$ctrl_tty" ] \
+              || { echo "::error::the runtime declares _LIBCPP_HAS_TERMINAL but the port answers $pipe_v/$tty_v where the system answers $ctrl_pipe/$ctrl_tty"
+                   exit 1; }
+            echo "  ok  the declaration holds: a terminal is distinguished from a pipe"
+          else
+            # The claim is that it cannot. Then it must not appear to: a
+            # declaration of 0 beside a working isatty is also a drift, and the
+            # remedy is to raise the declaration rather than leave it stale.
+            [ "$tty_v" = "$ctrl_tty" ] \
+              && { echo "::error::the runtime declares no terminal support while the port detects one; the declaration is stale"
+                   exit 1; }
+            echo "  ok  the declaration holds: no terminal support is claimed and none is present"
+          fi
 
       # ⭐⭐ THE SAME PROGRAM ON A MACHINE WITH NO OPERATING SYSTEM.
       #
@@ -345,22 +466,48 @@ jobs:
           "$env:USERPROFILE\.xlings\subos\current\bin" | Out-File -FilePath $env:GITHUB_PATH -Encoding utf8 -Append
 
       - name: Install mcpp
+        run: bash tools/install-mcpp.sh
+
+      # ⭐ THE ENGINE EVERY STEP BELOW WILL USE, COMPARED AGAINST THE ONE BUILT.
+      #
+      # The step above appends a directory to GITHUB_PATH, which governs the
+      # steps that follow it, so that step cannot observe its own effect. Whether
+      # the appended spelling is one the runner accepts is a property of the
+      # runner and differs between hosts. Left unasserted, a cross-validation run
+      # on a host that ignores it builds this ecosystem with the released engine
+      # and reports the result as though the change under review had been tested.
+      - name: The engine on PATH is the one under review
         run: |
-          for attempt in 1 2 3 4 5 6; do
-            xlings update > /dev/null 2>&1 || true
-            if xlings install "mcpp@$MCPP_VERSION" -y -g; then break; fi
-            if [ "$attempt" = 6 ]; then
-              echo "::error::mcpp@$MCPP_VERSION never appeared in the index"
-              exit 1
-            fi
-            sleep 60
-          done
-          mcpp self config --mirror GLOBAL
+          set -euo pipefail
+          if [ -z "${MCPP_UNDER_REVIEW:-}" ]; then
+            echo "  no source reference: this run tests $(mcpp --version)"
+            exit 0
+          fi
+          on_path=$(mcpp --version | awk '{print $2}')
+          if [ "$on_path" != "$MCPP_UNDER_REVIEW" ]; then
+            echo "::error::PATH resolves mcpp $on_path, and the build under review is $MCPP_UNDER_REVIEW"
+            echo "        the directory appended to GITHUB_PATH did not take effect on this host"
+            command -v mcpp
+            exit 1
+          fi
+          echo "  every step below runs $on_path, built from $MCPP_SOURCE_REF"
+
+      # ⭐ THE SAME ENGINE AND THE SAME STACK AS THE LINUX JOB, FROM A DIFFERENT
+      # HOST. This job had neither: it installed the released engine and
+      # resolved this ecosystem from the index, so a change spanning these
+      # repositories was validated on one host of three and reported as
+      # validated everywhere.
+      - name: Select the toolchain
+        run: |
+          set -euo pipefail
           # ⚠️ INSTALL, THEN SELECT. `toolchain default` names a toolchain and
           # does not fetch one, so selecting an absent payload fails with
           # `llvm@22.1.8 is not installed` — measured on both rows of this job.
           mcpp toolchain install llvm 22.1.8
           mcpp toolchain default 'llvm@22.1.8'
+
+      - name: The stack, as written on this branch
+        run: bash tools/branch-graph.sh '${{ github.head_ref || github.ref_name }}'
 
       - name: Every target, from this host
         run: |

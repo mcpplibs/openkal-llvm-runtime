@@ -12,3 +12,9 @@ mcpp.lock
 # remove a file that is ALREADY TRACKED. This repository had two: one at the
 # root and one under `examples/import-std/`. The first cleanup found only the
 # root one, because the scan it used anchored the path at the beginning.
+
+# The working trees the workflow substitutes for published dependencies.
+.musl/
+.spec/
+.impl/
+.openkal-*/
