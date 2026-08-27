@@ -85,6 +85,102 @@ jobs:
           cd examples/import-std && mcpp run 2>&1 | tee out.log
           grep -q 'import std above openkal: 2 4 7' out.log
 
+      # WHAT __config_site DECLARES AND WHAT THE PORT BENEATH PROVIDES ARE
+      # RECONCILED HERE, RATHER THAN BEING CHECKED ONCE AND ASSUMED AFTERWARDS.
+      #
+      # `__config_site` is this package's statement about the environment it was
+      # configured for, and the environment is openkal-musl. A statement that
+      # drifts from what the port actually provides does not fail to build and
+      # does not fail to link: it produces a program that takes a path the
+      # environment cannot support, and reports nothing.
+      #
+      # `_LIBCPP_HAS_TERMINAL` is the position where that happened. It gates
+      # `std::__is_posix_terminal`, which is `isatty(fileno(stream))` and nothing
+      # else. The port answered `isatty` with TCGETS while musl asks with
+      # TIOCGWINSZ, so every `isatty` returned 0 --- for a real terminal as
+      # readily as for a pipe --- and `std::print` never took its terminal path.
+      # Nothing failed; a program deciding on colour or on line buffering decided
+      # wrongly and in silence.
+      #
+      # The remedy was to fix the port rather than to withdraw the declaration,
+      # so the declaration is now true and this step is what keeps it true.
+      #
+      # THE CRITERION IS A RELATION AND NOT A VALUE. Asserting "a terminal is
+      # detected" would need a terminal; asserting "a pipe is not" would pass
+      # throughout the defect. What must hold is that the two DIFFER, and that
+      # they differ the way the system's own C library says they do.
+      - name: What the runtime declares is what the port provides
+        run: |
+          set -euo pipefail
+          d="$(mktemp -d)"; mkdir -p "$d/src"
+          cat > "$d/mcpp.toml" <<TOML
+          [package]
+          name    = "termdecl"
+          version = "0.1.0"
+          [dependencies]
+          openkal-llvm-runtime = { path = "$PWD" }
+          [targets.termdecl]
+          kind = "bin"
+          main = "src/main.cpp"
+          TOML
+          sed -i 's/^          //' "$d/mcpp.toml"
+          cat > "$d/src/main.cpp" <<'CPP'
+          #include <cstdio>
+          #include <unistd.h>
+          // The declaration this step exists to reconcile. If the package stops
+          // claiming a terminal, the program says so rather than failing to
+          // compile: the point is to compare the claim against the behaviour,
+          // and a build error would compare nothing.
+          int main() {
+          #if defined(_LIBCPP_HAS_TERMINAL) && _LIBCPP_HAS_TERMINAL
+              std::printf("declared=1 isatty=%d\n", isatty(1));
+          #else
+              std::printf("declared=0 isatty=%d\n", isatty(1));
+          #endif
+          }
+          CPP
+          sed -i 's/^          //' "$d/src/main.cpp"
+          ( cd "$d" && mcpp build )
+          bin="$(find "$d/target" -type f -name termdecl | head -1)"
+          test -n "$bin" || { echo "::error::the probe did not build"; exit 1; }
+
+          # The control: the system's own C library, through the same harness.
+          # Without it a `script` that fails to allocate a pty would make the
+          # runtime look wrong.
+          printf '#include <stdio.h>\n#include <unistd.h>\nint main(void){ printf("%%d\\n", isatty(1)); return 0; }\n' > "$d/ctrl.c"
+          cc "$d/ctrl.c" -o "$d/ctrl"
+          ctrl_pipe="$("$d/ctrl" | cat | tr -d '\r')"
+          ctrl_tty="$(script -qec "$d/ctrl" /dev/null | tr -d '\r' | head -1)"
+          [ "$ctrl_pipe" = 0 ] && [ "$ctrl_tty" = 1 ] \
+            || { echo "::error::the harness cannot tell a pty from a pipe (control gave $ctrl_pipe/$ctrl_tty)"
+                 exit 1; }
+
+          out_pipe="$("$bin" | cat | tr -d '\r')"
+          out_tty="$(script -qec "$bin" /dev/null | tr -d '\r' | head -1)"
+          echo "  control: pipe=$ctrl_pipe tty=$ctrl_tty"
+          echo "  runtime: $out_pipe / $out_tty"
+
+          declared="${out_pipe#declared=}"; declared="${declared%% *}"
+          pipe_v="${out_pipe##*isatty=}"
+          tty_v="${out_tty##*isatty=}"
+
+          if [ "$declared" = 1 ]; then
+            # The claim is that a terminal can be detected, so the two must
+            # differ and must differ as the system's own library does.
+            [ "$pipe_v" = "$ctrl_pipe" ] && [ "$tty_v" = "$ctrl_tty" ] \
+              || { echo "::error::the runtime declares _LIBCPP_HAS_TERMINAL but the port answers $pipe_v/$tty_v where the system answers $ctrl_pipe/$ctrl_tty"
+                   exit 1; }
+            echo "  ok  the declaration holds: a terminal is distinguished from a pipe"
+          else
+            # The claim is that it cannot. Then it must not appear to: a
+            # declaration of 0 beside a working isatty is also a drift, and the
+            # remedy is to raise the declaration rather than leave it stale.
+            [ "$tty_v" = "$ctrl_tty" ] \
+              && { echo "::error::the runtime declares no terminal support while the port detects one; the declaration is stale"
+                   exit 1; }
+            echo "  ok  the declaration holds: no terminal support is claimed and none is present"
+          fi
+
       # ⭐⭐ THE SAME PROGRAM ON A MACHINE WITH NO OPERATING SYSTEM.
       #
       # Everything above this step runs on a host, and a host has a C library, a
