@@ -94,26 +94,60 @@ int main() {
     check(fs::file_size(dir / "b.txt", ec) == 10 && !ec,
           "and the copy has the same size");
 
-    // ⭐⭐ AND THE TWO OPERATIONS openkal HAS NO ATOM FOR, CHECKED AS REFUSALS.
+    // ⭐⭐ AND THE OPERATION openkal HAS NO ATOM FOR, CHECKED AS A REFUSAL.
     //
-    // `kal_node_info` carries a boolean `writable` and not a mode word, and
-    // SURFACE.txt has no operation that creates a symbolic link. openkal-musl
-    // therefore refuses `chmod` and `symlink` rather than succeeding and
-    // reporting something else afterwards --- and a refusal that arrives as a
+    // `kal_node_info` carries a boolean `writable` and not a mode word, so
+    // openkal-musl refuses `chmod` rather than succeeding and reporting
+    // something else afterwards --- and a refusal that arrives as a
     // `std::error_code` is what a C++ caller can act upon.
     //
     // ⚠️ THIS IS THE HALF THAT WOULD BE OMITTED. A probe checking only that the
     // supported operations work would pass just as well for a port that
-    // silently accepted these two, which is the outcome the report
+    // silently accepted it, which is the outcome the report
     // (openkal-linux#13) described as "expected 0600, got 0777".
     ec.clear();
     fs::permissions(dir / "a.txt", fs::perms::owner_read, ec);
     check(static_cast<bool>(ec), "changing permission bits is refused, not ignored");
 
+    // ⭐⭐ AND THE ONE THAT WAS A REFUSAL AND IS NOW AN OPERATION.
+    //
+    // This block read `create_symlink ... check(ec)` --- a link was refused,
+    // and the refusal was the assertion. openkal 0.9 added `kal_fs_link_create`
+    // and `kal_fs_link_read`, openkal-musl 0.7 answers `symlinkat` and
+    // `readlinkat` with them, and the refusal stopped arriving.
+    //
+    // ⚠️ A TEST THAT ASSERTS A LIMITATION BECOMES FALSE WHEN THE LIMITATION IS
+    // LIFTED, AND IT FAILS RATHER THAN GOING QUIET. That is the good case and
+    // it is why the assertion was written this way round: had it merely
+    // tolerated both answers, the arrival of the operation would have been
+    // invisible here, and this file is the only place in the ecosystem where a
+    // C++ standard library exercises it.
+    // ⚠️ THE TARGET IS `a.txt' AND NOT `dir / "a.txt"'. A link's content is
+    // resolved relative to the directory HOLDING THE LINK, not to the working
+    // directory --- so the second spelling, which looks more careful, produces
+    // `cxx-probe.d/cxx-probe.d/a.txt' and a dangling link. It was written that
+    // way here first, and the three assertions below failed against a port that
+    // was answering correctly.
     ec.clear();
-    fs::create_symlink(dir / "a.txt", dir / "link", ec);
-    check(static_cast<bool>(ec), "creating a symbolic link is refused, not ignored");
+    fs::create_symlink("a.txt", dir / "link", ec);
+    check(!ec, "a symbolic link is created");
+    check(fs::read_symlink(dir / "link", ec) == "a.txt" && !ec,
+          "and reading it gives back the name it was made from");
 
+    // The distinction the link exists to make: an enquiry that resolves and one
+    // that does not answer about different nodes. A port that conflated them
+    // reported every link as the file it points at, which is what made a tree
+    // containing one uncopyable.
+    check(fs::is_symlink(fs::symlink_status(dir / "link", ec)) && !ec,
+          "an enquiry that does not resolve reports the link itself");
+    check(fs::is_regular_file(fs::status(dir / "link", ec)) && !ec,
+          "and one that resolves reports the file it names");
+    check(fs::file_size(dir / "link", ec) == 10 && !ec,
+          "so the size read through it is the file's");
+
+    // ⭐ AND THE TREE IS STILL WALKABLE. `remove_all` recurses, and a directory
+    // holding a link is the case where resolving during the walk removes the
+    // wrong node or loops.
     fs::remove_all(dir, ec);
     check(!fs::exists(dir, ec), "the directory and its contents are removed");
 
