@@ -6,7 +6,7 @@ C library.
 
 ```toml
 [dependencies]
-openkal-llvm-runtime = "0.3.0"
+openkal-llvm-runtime = "0.3.1"
 ```
 
 A C++ standard library is not portable in the way a program is. It is
