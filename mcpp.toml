@@ -1,7 +1,7 @@
 [package]
 namespace   = "mcpplibs"
 name        = "openkal-llvm-runtime"
-version     = "0.9.0"
+version     = "0.9.1"
 description = "LLVM's C++ runtime libraries — libc++, libc++abi and libunwind — configured for openkal-musl rather than for a host C library."
 license     = "Apache-2.0"
 authors     = ["mcpplibs"]
@@ -208,7 +208,7 @@ sources = [
 cflags = ["-DDISABLE_AARCH64_FMV=1"]
 
 [dependencies]
-openkal-musl = "0.13.0"
+openkal-musl = "0.13.1"
 
 [build]
 cxx_standard = "c++23"
