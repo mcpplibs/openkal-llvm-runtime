@@ -569,7 +569,8 @@ jobs:
       #
       # `same-source` also runs on bare metal, so it cannot start a thread;
       # `examples/cxx` can, and on Windows a joined std::thread was an access
-      # violation until openkal-musl 0.13.2 widened C++ `pthread_t`.
+      # violation until openkal-musl 0.13.2 widened C++ `pthread_t`; on macOS a
+      # detached one ending was, until openkal-musl 0.13.3.
       - name: A hosted C++ program above it runs on this host
         run: |
           set -euo pipefail
@@ -579,6 +580,7 @@ jobs:
           # thread, so a difference elsewhere is reported without failing it.
           mcpp run --target '${{ matrix.native }}' 2>&1 | tee out.log || true
           grep -q 'ok: a thread is started and joined' out.log
+          grep -q 'ok: a detached thread runs and ends' out.log
 
       - name: The artefact for this host runs on it
         run: |
