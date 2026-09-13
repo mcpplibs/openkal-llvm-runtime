@@ -19,6 +19,8 @@
 #include <random>
 #include <system_error>
 #include <thread>
+#include <atomic>
+#include <chrono>
 
 // ⭐ THREE NAMES A PROGRAM ABOVE THIS STACK MAY USE, ASSERTED BY COMPILING.
 //
@@ -80,6 +82,20 @@ int main() {
         const bool joinable = worker.joinable();
         worker.join();
         check(joinable && written == 42 && !worker.joinable(), "a thread is started and joined");
+    }
+
+    // ⚠️ AND A DETACHED THREAD ENDS WITHOUT ENDING THE PROGRAM. musl released a
+    // detached thread's mapping from a 256-byte stack every exiting thread
+    // shares, and openkal-musl's path for the calls that end the thread overran
+    // it into the context table; on macOS the program stopped as the thread
+    // ended. Fixed in openkal-musl 0.13.3.
+    {
+        static std::atomic<bool> ran{false};
+        std::thread([] { ran = true; }).detach();
+        for (int i = 0; i < 400 && !ran; ++i) std::this_thread::sleep_for(std::chrono::milliseconds(5));
+        // Running is reported before ending; the pause lets the thread end.
+        std::this_thread::sleep_for(std::chrono::milliseconds(100));
+        check(ran, "a detached thread runs and ends");
     }
 
     // --- std::filesystem, which is the C++ face of openkal.fs ---------------
