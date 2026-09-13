@@ -18,6 +18,7 @@
 #include <filesystem>
 #include <random>
 #include <system_error>
+#include <thread>
 
 // ⭐ THREE NAMES A PROGRAM ABOVE THIS STACK MAY USE, ASSERTED BY COMPILING.
 //
@@ -66,6 +67,20 @@ int main() {
 
     check(hidden + weak == 18 && weak_alias{3}.value == 3,
           "hidden, weak and weak_alias are the program's own identifiers");
+
+    // --- std::thread, which is the C++ face of openkal.task -----------------
+    //
+    // ⚠️ A THREAD THAT STARTS IS NOT A THREAD THAT IS JOINED. libc++ keeps the
+    // pthread_t it was given, and musl declared that type `unsigned long` for
+    // C++ --- thirty-two bits on Windows --- so the join read through half a
+    // pointer and ended the program. Fixed in openkal-musl 0.13.2.
+    {
+        int written = 0;
+        std::thread worker([&] { written = 42; });
+        const bool joinable = worker.joinable();
+        worker.join();
+        check(joinable && written == 42 && !worker.joinable(), "a thread is started and joined");
+    }
 
     // --- std::filesystem, which is the C++ face of openkal.fs ---------------
 
