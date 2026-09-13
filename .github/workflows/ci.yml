@@ -331,6 +331,26 @@ jobs:
           file "$RUNNER_TEMP/cross/openkal-same-source.exe" | grep -q 'PE32+ executable'
           file "$RUNNER_TEMP/cross/openkal-same-source"     | grep -q 'Mach-O 64-bit arm64'
 
+      # ⭐ AND A TRANSLATION UNIT THAT INCLUDES A STANDARD HEADER, FOR THE SAME TWO.
+      #
+      # `same-source` imports std, and the std module is compiled with this
+      # package's own flags, so it cannot see what a consumer's translation unit
+      # sees. `examples/cxx` includes <filesystem> the way every module wrapper
+      # of a header library does, and that path reaches libc++'s musl locale
+      # support, which calls strtof_l and vasprintf. musl declares those only
+      # under _GNU_SOURCE, and Clang predefines _GNU_SOURCE for C++ on Linux
+      # targets alone -- so this example ran on Linux and did not compile for
+      # either of these targets until __config_site stated it.
+      - name: A standard header, built here for Windows and for macOS
+        if: matrix.toolchain == 'llvm@22.1.8'
+        run: |
+          set -euo pipefail
+          cd examples/cxx
+          for t in x86_64-windows-gnu aarch64-macos; do
+            rm -rf target
+            mcpp build --target "$t"
+          done
+
       - uses: actions/upload-artifact@v4
         if: matrix.toolchain == 'llvm@22.1.8'
         with:

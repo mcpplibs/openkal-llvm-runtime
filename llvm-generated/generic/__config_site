@@ -9,6 +9,18 @@
 #ifndef _LIBCPP___CONFIG_SITE
 #define _LIBCPP___CONFIG_SITE
 
+// openkal: the C library beneath is musl, and this configuration's locale
+// support (__locale_dir/support/linux.h) calls strtof_l, strtod_l, strtold_l and
+// vasprintf, which musl declares only under _GNU_SOURCE. Clang predefines
+// _GNU_SOURCE for C++ on Linux targets and on no other, so a translation unit
+// that includes a standard header -- as every module wrapper of a header
+// library does -- compiled for the Linux target and failed for the macOS and
+// Windows targets. Stating it here gives every target the environment the
+// Linux target already had; this header is included before any C header.
+#ifndef _GNU_SOURCE
+#  define _GNU_SOURCE 1
+#endif
+
 #define _LIBCPP_ABI_VERSION 1
 #define _LIBCPP_ABI_NAMESPACE __1
 #define _LIBCPP_ABI_FORCE_ITANIUM 0
