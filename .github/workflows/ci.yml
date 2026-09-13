@@ -565,6 +565,21 @@ jobs:
 
       # ⭐ And the one that is this machine, run rather than inspected — the same
       # criterion the Linux job holds itself to, applied from a different host.
+      # ⭐ AND A HOSTED C++ PROGRAM, WHICH IS WHERE THREADS AND FILES ARE.
+      #
+      # `same-source` also runs on bare metal, so it cannot start a thread;
+      # `examples/cxx` can, and on Windows a joined std::thread was an access
+      # violation until openkal-musl 0.13.2 widened C++ `pthread_t`.
+      - name: A hosted C++ program above it runs on this host
+        run: |
+          set -euo pipefail
+          cd examples/cxx
+          rm -rf target
+          # The other observations were written for Linux; this step asks for the
+          # thread, so a difference elsewhere is reported without failing it.
+          mcpp run --target '${{ matrix.native }}' 2>&1 | tee out.log || true
+          grep -q 'ok: a thread is started and joined' out.log
+
       - name: The artefact for this host runs on it
         run: |
           set -euo pipefail
