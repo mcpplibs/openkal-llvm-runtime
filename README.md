@@ -39,7 +39,17 @@ position in it is a **claim about the environment beneath**:
 #define _LIBCPP_HAS_RANDOM_DEVICE 1   /* openkal.random reaches a source   */
 #define _LIBCPP_HAS_FILESYSTEM    1   /* openkal.fs, and its sources built */
 #define _LIBCPP_HAS_TERMINAL      1   /* isatty answers, rather than lying */
+#define _GNU_SOURCE               1   /* musl's GNU interfaces, on every target */
 ```
+
+The last line is not a libc++ switch, and it is here for the same reason as the
+others. This configuration's locale support calls `strtof_l`, `strtod_l`,
+`strtold_l` and `vasprintf`, which musl declares only under `_GNU_SOURCE`.
+Clang predefines `_GNU_SOURCE` for C++ on Linux targets and on no other, so a
+translation unit that includes a standard header — which is what every module
+wrapper of a header library does — built for Linux and failed for macOS and
+Windows with `no member named 'strtof_l' in the global namespace`. Stating it
+in the configuration gives every target what the Linux target already had.
 
 The first was measured rather than assumed. With it at `0` — the value a
 toolchain configured for glibc ships — a translation unit that includes
