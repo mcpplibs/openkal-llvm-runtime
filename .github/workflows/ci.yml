@@ -582,6 +582,26 @@ jobs:
           grep -q 'ok: a thread is started and joined' out.log
           grep -q 'ok: a detached thread runs and ends' out.log
 
+      # ⚠️ AND BUILT WITH --release, WHICH IS WHAT A USER SHIPS. Until
+      # openkal-macos 0.9.1 a release program faulted before `main' on macOS (a
+      # returned register declared an input), and until openkal-windows 0.7.1 its
+      # arguments were shortened on Windows (a loop became `wcslen'). The dev
+      # profile showed neither, so this step asks for the same observations of a
+      # release build.
+      - name: The same program built with --release runs on this host
+        run: |
+          set -euo pipefail
+          cd examples/cxx
+          rm -rf target
+          # `mcpp build --release' and not `mcpp run': the pinned build tool's
+          # `run' takes no profile.
+          mcpp build --release --target '${{ matrix.native }}'
+          exe=$(find target -type f -path '*/bin/*' \( -name 'openkal-cxx-example' -o -name 'openkal-cxx-example.exe' \) | head -1)
+          test -n "$exe" || { echo "::error::the release build produced no program"; exit 1; }
+          "$exe" 2>&1 | tee out.log || true
+          grep -q 'ok: a thread is started and joined' out.log
+          grep -q 'ok: a detached thread runs and ends' out.log
+
       - name: The artefact for this host runs on it
         run: |
           set -euo pipefail
