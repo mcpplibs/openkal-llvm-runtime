@@ -1,11 +1,19 @@
 [package]
 namespace   = "mcpplibs"
 name        = "openkal-llvm-runtime"
-version     = "0.9.6"
+version     = "0.9.7"
 description = "LLVM's C++ runtime libraries — libc++, libc++abi and libunwind — configured for openkal-musl rather than for a host C library."
 license     = "Apache-2.0"
 authors     = ["mcpplibs"]
 repo        = "https://github.com/mcpplibs/openkal-llvm-runtime"
+
+# The language level of this package's own sources. libc++, libc++abi and
+# libunwind are written for C++23 and upstream compiles them at that level,
+# while a program above them may be at any level. From mcpp 2026.9.15.2 a
+# package that provides the C++ layer compiles its implementation units at the
+# level it states here and its std module at the consuming graph's level. The
+# key replaces `[build] cxx_standard`, which no engine has read.
+standard    = "c++23"
 
 # What this package is, stated as a capability rather than left to be inferred
 # from its name.
@@ -211,7 +219,6 @@ cflags = ["-DDISABLE_AARCH64_FMV=1"]
 openkal-musl = "0.13.5"
 
 [build]
-cxx_standard = "c++23"
 
 # ⚠️ WHAT IS VENDORED AND WHAT IS NOT.
 #
