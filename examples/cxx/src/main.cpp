@@ -98,6 +98,24 @@ int main() {
         check(ran, "a detached thread runs and ends");
     }
 
+    // --- the allocator, past the size musl maps on its own --------------------
+    //
+    // ⚠️ A STRING THAT GROWS PAST A MAPPING KEEPS WHAT IT HOLDS. musl obtains an
+    // allocation of 131,052 bytes or more as a mapping of its own and uses it to
+    // the end of its last page; openkal-musl's mapping was only the length asked
+    // for, and on Windows the rest of the page was the next heap block, so a
+    // string grown past 196,607 bytes ended the program. Fixed in openkal-musl
+    // 0.13.5.
+    {
+        std::string grown;
+        for (std::size_t i = 0; i < (std::size_t{1} << 22); ++i) grown.push_back(static_cast<char>('a' + i % 26));
+        std::vector<std::string> copies(4, grown);
+        bool same = grown.size() == (std::size_t{1} << 22);
+        for (const auto& copy : copies) same = same && copy == grown;
+        for (std::size_t i = 0; same && i < grown.size(); i += 4093) same = grown[i] == static_cast<char>('a' + i % 26);
+        check(same, "a string grows past the allocator's own mappings");
+    }
+
     // --- std::filesystem, which is the C++ face of openkal.fs ---------------
 
     namespace fs = std::filesystem;

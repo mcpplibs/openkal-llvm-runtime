@@ -581,6 +581,7 @@ jobs:
           mcpp run --target '${{ matrix.native }}' 2>&1 | tee out.log || true
           grep -q 'ok: a thread is started and joined' out.log
           grep -q 'ok: a detached thread runs and ends' out.log
+          grep -q "ok: a string grows past the allocator's own mappings" out.log
 
       # ⚠️ AND BUILT WITH --release, WHICH IS WHAT A USER SHIPS. Until
       # openkal-macos 0.9.1 a release program faulted before `main' on macOS (a
@@ -601,6 +602,7 @@ jobs:
           "$exe" 2>&1 | tee out.log || true
           grep -q 'ok: a thread is started and joined' out.log
           grep -q 'ok: a detached thread runs and ends' out.log
+          grep -q "ok: a string grows past the allocator's own mappings" out.log
 
       - name: The artefact for this host runs on it
         run: |
