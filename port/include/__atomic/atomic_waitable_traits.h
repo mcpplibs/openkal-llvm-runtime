@@ -1,6 +1,6 @@
 // Which widths the platform's wait primitive serves natively.
 //
-// ⭐ THE COMPANION TO `__atomic/contention_t.h` BESIDE THIS FILE, AND BOTH ARE
+// THE COMPANION TO `__atomic/contention_t.h` BESIDE THIS FILE, AND BOTH ARE
 // NEEDED — WHICH IS THE FINDING.
 //
 // Upstream answers by operating system: 4 on Linux, 4 and 8 on Apple, 8 on
@@ -10,7 +10,7 @@
 // openkal's suspension primitive is `kal_task_wait(const kal_u32*, …)` — four
 // bytes, on every target, because that is what the specification says it takes.
 //
-// ⚠️ SETTING THE CONTENTION TYPE ALONE DID NOT WORK, and the way it failed is
+// SETTING THE CONTENTION TYPE ALONE DID NOT WORK, and the way it failed is
 // worth keeping. Measured 2026-08-23: after `__cxx_contention_t` was made
 // `int32_t` here, the same assertion came back unchanged —
 //

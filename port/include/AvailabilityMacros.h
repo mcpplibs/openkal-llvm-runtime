@@ -1,7 +1,7 @@
 // A stub for a header openkal has no reason to have, providing exactly the one
 // macro that is read.
 //
-// ⭐ THE SAME MOVE AS openkal-macos's `libSystem.tbd`, WHICH IS TWO NAMES.
+// THE SAME MOVE AS openkal-macos's `libSystem.tbd`, WHICH IS TWO NAMES.
 //
 // libunwind's public header asks how old a deployment target may be before its
 // entry points become unavailable, and it asks Apple's SDK. There is no Apple
@@ -17,7 +17,7 @@
 //
 //     libunwind.h:  AVAILABLE_MAC_OS_X_VERSION_10_6_AND_LATER
 //
-// ⚠️ EMPTY IS THE ANSWER, NOT A PLACEHOLDER. The macro's job upstream is to
+// EMPTY IS THE ANSWER, NOT A PLACEHOLDER. The macro's job upstream is to
 // attach an availability attribute, which describes when a symbol appeared in
 // Apple's shipping libSystem. Nothing here comes from Apple's libSystem, so
 // there is no version at which it appeared and nothing to attach.

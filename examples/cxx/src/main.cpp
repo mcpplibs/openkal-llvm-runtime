@@ -2,7 +2,7 @@
 // settles whether the runtime is really there: an exception thrown across a
 // frame and caught.
 //
-// ⭐ AND THE PARTS OF THE STANDARD LIBRARY WHOSE AVAILABILITY IS A STATEMENT
+// AND THE PARTS OF THE STANDARD LIBRARY WHOSE AVAILABILITY IS A STATEMENT
 // ABOUT THE ENVIRONMENT BENEATH. `__config_site` declares
 // `_LIBCPP_HAS_FILESYSTEM 1` and `_LIBCPP_HAS_RANDOM_DEVICE 1` for a hosted
 // row; those declarations are this package's claim about openkal-musl, and a
@@ -22,7 +22,7 @@
 #include <atomic>
 #include <chrono>
 
-// ⭐ THREE NAMES A PROGRAM ABOVE THIS STACK MAY USE, ASSERTED BY COMPILING.
+// THREE NAMES A PROGRAM ABOVE THIS STACK MAY USE, ASSERTED BY COMPILING.
 //
 // musl's INTERNAL header overlay defines `hidden`, `weak` and `weak_alias` as
 // macros that mean something only to musl's own sources, and openkal-musl used
@@ -72,7 +72,7 @@ int main() {
 
     // --- std::thread, which is the C++ face of openkal.task -----------------
     //
-    // ⚠️ A THREAD THAT STARTS IS NOT A THREAD THAT IS JOINED. libc++ keeps the
+    // A THREAD THAT STARTS IS NOT A THREAD THAT IS JOINED. libc++ keeps the
     // pthread_t it was given, and musl declared that type `unsigned long` for
     // C++ --- thirty-two bits on Windows --- so the join read through half a
     // pointer and ended the program. Fixed in openkal-musl 0.13.2.
@@ -84,7 +84,7 @@ int main() {
         check(joinable && written == 42 && !worker.joinable(), "a thread is started and joined");
     }
 
-    // ⚠️ AND A DETACHED THREAD ENDS WITHOUT ENDING THE PROGRAM. musl released a
+    // AND A DETACHED THREAD ENDS WITHOUT ENDING THE PROGRAM. musl released a
     // detached thread's mapping from a 256-byte stack every exiting thread
     // shares, and openkal-musl's path for the calls that end the thread overran
     // it into the context table; on macOS the program stopped as the thread
@@ -100,7 +100,7 @@ int main() {
 
     // --- the allocator, past the size musl maps on its own --------------------
     //
-    // ⚠️ A STRING THAT GROWS PAST A MAPPING KEEPS WHAT IT HOLDS. musl obtains an
+    // A STRING THAT GROWS PAST A MAPPING KEEPS WHAT IT HOLDS. musl obtains an
     // allocation of 131,052 bytes or more as a mapping of its own and uses it to
     // the end of its last page; openkal-musl's mapping was only the length asked
     // for, and on Windows the rest of the page was the next heap block, so a
@@ -143,14 +143,14 @@ int main() {
     check(fs::file_size(dir / "b.txt", ec) == 10 && !ec,
           "and the copy has the same size");
 
-    // ⭐⭐ AND THE OPERATION openkal HAS NO ATOM FOR, CHECKED AS A REFUSAL.
+    // AND THE OPERATION openkal HAS NO ATOM FOR, CHECKED AS A REFUSAL.
     //
     // `kal_node_info` carries a boolean `writable` and not a mode word, so
     // openkal-musl refuses `chmod` rather than succeeding and reporting
     // something else afterwards --- and a refusal that arrives as a
     // `std::error_code` is what a C++ caller can act upon.
     //
-    // ⚠️ THIS IS THE HALF THAT WOULD BE OMITTED. A probe checking only that the
+    // THIS IS THE HALF THAT WOULD BE OMITTED. A probe checking only that the
     // supported operations work would pass just as well for a port that
     // silently accepted it, which is the outcome the report
     // (openkal-linux#13) described as "expected 0600, got 0777".
@@ -158,20 +158,20 @@ int main() {
     fs::permissions(dir / "a.txt", fs::perms::owner_read, ec);
     check(static_cast<bool>(ec), "changing permission bits is refused, not ignored");
 
-    // ⭐⭐ AND THE ONE THAT WAS A REFUSAL AND IS NOW AN OPERATION.
+    // AND THE ONE THAT WAS A REFUSAL AND IS NOW AN OPERATION.
     //
     // This block read `create_symlink ... check(ec)` --- a link was refused,
     // and the refusal was the assertion. openkal 0.9 added `kal_fs_link_create`
     // and `kal_fs_link_read`, openkal-musl 0.7 answers `symlinkat` and
     // `readlinkat` with them, and the refusal stopped arriving.
     //
-    // ⚠️ A TEST THAT ASSERTS A LIMITATION BECOMES FALSE WHEN THE LIMITATION IS
+    // A TEST THAT ASSERTS A LIMITATION BECOMES FALSE WHEN THE LIMITATION IS
     // LIFTED, AND IT FAILS RATHER THAN GOING QUIET. That is the good case and
     // it is why the assertion was written this way round: had it merely
     // tolerated both answers, the arrival of the operation would have been
     // invisible here, and this file is the only place in the ecosystem where a
     // C++ standard library exercises it.
-    // ⚠️ THE TARGET IS `a.txt' AND NOT `dir / "a.txt"'. A link's content is
+    // THE TARGET IS `a.txt' AND NOT `dir / "a.txt"'. A link's content is
     // resolved relative to the directory HOLDING THE LINK, not to the working
     // directory --- so the second spelling, which looks more careful, produces
     // `cxx-probe.d/cxx-probe.d/a.txt' and a dangling link. It was written that
@@ -194,7 +194,7 @@ int main() {
     check(fs::file_size(dir / "link", ec) == 10 && !ec,
           "so the size read through it is the file's");
 
-    // ⭐ AND THE TREE IS STILL WALKABLE. `remove_all` recurses, and a directory
+    // AND THE TREE IS STILL WALKABLE. `remove_all` recurses, and a directory
     // holding a link is the case where resolving during the walk removes the
     // wrong node or loops.
     fs::remove_all(dir, ec);
@@ -205,7 +205,7 @@ int main() {
     {
         std::random_device rd;
         const unsigned a = rd(), b = rd(), c = rd();
-        // ⚠️ THE CRITERION IS THAT THEY DIFFER, NOT THAT ANY ONE OF THEM IS
+        // THE CRITERION IS THAT THEY DIFFER, NOT THAT ANY ONE OF THEM IS
         // ANYTHING. A source stuck at a constant satisfies "a number was
         // produced" and is exactly what a port that forgot to fill the buffer
         // would produce.

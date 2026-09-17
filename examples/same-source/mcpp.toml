@@ -2,7 +2,7 @@
 name    = "openkal-same-source"
 version = "0.1.0"
 
-# ⚠️ NO `[build] target`, AND THAT IS THE POINT OF THE DIRECTORY.
+# NO `[build] target`, AND THAT IS THE POINT OF THE DIRECTORY.
 #
 # The same `src/main.cpp` is built two ways from here:
 #
@@ -17,7 +17,7 @@ version = "0.1.0"
 # is the emulator with firmware, because `-bios default` is what supplies the
 # SBI this program's openkal implementation calls.
 #
-# ⚠️ THE EMULATOR IS NAMED WITHOUT A PATH AND MUST STAY THAT WAY.
+# THE EMULATOR IS NAMED WITHOUT A PATH AND MUST STAY THAT WAY.
 #
 # Running this locally means pointing the name at an installed emulator, and the
 # obvious way to do that is to edit this line. Doing so and committing puts one
@@ -43,7 +43,7 @@ openkal-llvm-runtime = { path = "../.." }
 # here at all — it follows from the one dependency above, and mcpp resolves it
 # after the dependency graph exists.
 #
-# ⚠️ This file used to name `openkal-llvm@22.1.8`, a toolchain family that
+# This file used to name `openkal-llvm@22.1.8`, a toolchain family that
 # downloaded nothing `llvm` does not: the same payload, the same clang, the same
 # version. What differed was what mcpp then believed about the target side. That
 # belief now comes from what the packages declare, so the family name carries

@@ -1,7 +1,7 @@
 // The dynamic loader's enquiry interface — declared, and answering that there
 // is nothing loaded.
 //
-// ⚠️ THIS ONE IS NOT A COMPILE-TIME STUB. Two places call these at RUN time:
+// THIS ONE IS NOT A COMPILE-TIME STUB. Two places call these at RUN time:
 //
 //   libcxx/src/include/refstring.h   — asks whether a string literal lies in a
 //                                      read-only segment, so that a copy can be
@@ -15,7 +15,7 @@
 // back to copying, and the unwinder falls back to the DWARF tables it is
 // configured to use here anyway.
 //
-// ⚠️ Answering zero is NOT the same as leaving the symbols undefined. Undefined
+// Answering zero is NOT the same as leaving the symbols undefined. Undefined
 // would be a link error naming Apple's loader in a program that never wanted
 // one; zero is the state of a program that is not dynamically loaded, and it is
 // true rather than a simulation.
@@ -35,14 +35,14 @@ static inline const struct mach_header* _dyld_get_image_header(uint32_t) { retur
 static inline intptr_t _dyld_get_image_vmaddr_slide(uint32_t) { return 0; }
 static inline const char* _dyld_get_image_name(uint32_t) { return 0; }
 
-// ⚠️ AND THE UNLOAD HOOK, WHICH IS WHY THIS FILE IS NOT ONLY ENQUIRIES.
+// AND THE UNLOAD HOOK, WHICH IS WHY THIS FILE IS NOT ONLY ENQUIRIES.
 //
 // libunwind's frame-description cache registers a callback so that entries can
 // be dropped when an image is unloaded. Nothing is ever unloaded here — there
 // is one image and no loader to unload it — so registering is complete when it
 // does nothing, and the callback would never be called even if it were kept.
 //
-// ⭐ Stubbing it here rather than shadowing UnwindCursor.hpp keeps the whole of
+// Stubbing it here rather than shadowing UnwindCursor.hpp keeps the whole of
 // this package's difference from upstream in headers upstream does not own.
 // The rule the overlay follows: replace the PLATFORM, never the library.
 static inline void _dyld_register_func_for_remove_image(
