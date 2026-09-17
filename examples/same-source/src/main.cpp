@@ -1,6 +1,6 @@
 // `import std;` on a machine with no operating system.
 //
-// ⭐⭐ ONE SOURCE, TWO MACHINES, NOTHING EDITED BETWEEN THEM.
+// ONE SOURCE, TWO MACHINES, NOTHING EDITED BETWEEN THEM.
 //
 //     mcpp run                             — this machine, over openkal-linux
 //     mcpp run --target riscv64-none-elf   — riscv64, over OpenSBI, no OS
@@ -9,7 +9,7 @@
 // about building above openkal, written as something a reader can run rather
 // than something they have to believe.
 //
-// ⭐ AND THE SECOND COMMAND IS THE ACCEPTANCE CRITERION, BECAUSE IT CANNOT GO
+// AND THE SECOND COMMAND IS THE ACCEPTANCE CRITERION, BECAUSE IT CANNOT GO
 // GREEN BY ACCIDENT.
 //
 // A hosted target has a C library, a C++ runtime and an unwinder already
@@ -60,7 +60,7 @@ int main() {
     std::println("unwound: {}", unwound);
 
     const bool ok = v[0] == 2 && v[2] == 7 && caught == 42 && unwound;
-    // ⚠️ The outcome is an ARGUMENT and not the format string: a format string
+    // The outcome is an ARGUMENT and not the format string: a format string
     // is consumed by a consteval constructor, and a value computed at run time
     // cannot be one. The compiler says so, which is the whole reason it is
     // written this way.

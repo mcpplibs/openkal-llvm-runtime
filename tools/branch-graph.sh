@@ -13,12 +13,12 @@
 # remedy is to put the working trees in place of the versions, for the whole
 # graph rather than for its first edge.
 #
-# ⚠️ WHY THIS IS A SCRIPT AND NOT A STEP. It was a step, in one job of two, and
+# WHY THIS IS A SCRIPT AND NOT A STEP. It was a step, in one job of two, and
 # the other job resolved from the index and failed exactly as above the moment
 # the versions moved. Two copies of a procedure that must agree are two copies
 # that will not; one file called twice cannot drift.
 #
-# ⚠️ THE SUBSTITUTED PATHS ARE RELATIVE, AND DELIBERATELY SO.
+# THE SUBSTITUTED PATHS ARE RELATIVE, AND DELIBERATELY SO.
 #
 # An absolute path names a directory of one machine. A manifest carrying one has
 # been committed in this ecosystem and published, and every consumer resolving
@@ -27,7 +27,7 @@
 # `pwd` under MSYS reports `/d/a/...`, which is not a path the engine resolves,
 # so an absolute form would need a Windows-only conversion here.
 #
-# ⚠️ `sed -i` IS NOT PORTABLE. BSD sed, which is macOS's, reads the argument
+# `sed -i` IS NOT PORTABLE. BSD sed, which is macOS's, reads the argument
 # after -i as a backup suffix; the same command that edits a file on Linux
 # consumes the next expression on macOS. In-place editing goes through a
 # temporary file below for that reason.
@@ -67,7 +67,7 @@ fetch openkal      .spec
 
 manifests=(mcpp.toml .musl/mcpp.toml)
 
-# ⚠️ EVERY BACKEND THE C LIBRARY NAMES, DISCOVERED RATHER THAN LISTED.
+# EVERY BACKEND THE C LIBRARY NAMES, DISCOVERED RATHER THAN LISTED.
 #
 # openkal-musl names a backend per target --- linux, macos, windows, opensbi ---
 # each conditional on the target it serves. Their versions all move with a change
@@ -106,7 +106,7 @@ grep -q 'path = "./.musl"'  mcpp.toml \
 grep -q 'path = "../.spec"' .musl/mcpp.toml \
     || { echo "::error::the specification substitution matched nothing"; exit 1; }
 
-# ⭐ THE CHECK THAT WOULD HAVE CAUGHT EVERY FAILURE ABOVE AT ITS FIRST OCCURRENCE:
+# THE CHECK THAT WOULD HAVE CAUGHT EVERY FAILURE ABOVE AT ITS FIRST OCCURRENCE:
 # nothing anywhere in the substituted graph still names a version. The three
 # defects this file records were each found by a build failing one link further
 # down than the last; this asks the whole graph at once.

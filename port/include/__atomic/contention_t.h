@@ -1,7 +1,7 @@
 // The width `std::atomic`'s contention counter has — which is the width the
 // platform's wait primitive takes, and openkal's is four bytes.
 //
-// ⭐ THE SAME QUESTION AS EVERY OTHER OVERLAY HERE, AND IT IS THE ONE THAT
+// THE SAME QUESTION AS EVERY OTHER OVERLAY HERE, AND IT IS THE ONE THAT
 // DECIDES WHICH `__platform_wait_on_address<N>` GETS INSTANTIATED.
 //
 // Upstream picks by operating system — `int32_t` on Linux, `int64_t` on Apple,
@@ -15,7 +15,7 @@
 // primitive takes. So the answer here follows the C library, exactly as the
 // locale backend and the CRT selection do.
 //
-// ⚠️ Measured 2026-08-23, after `atomic.cpp`'s platform block was replaced but
+// Measured 2026-08-23, after `atomic.cpp`'s platform block was replaced but
 // before this file existed:
 //
 //     static assertion failed due to requirement '8UL == 4':
@@ -25,7 +25,7 @@
 // upstream had already chosen four and elsewhere it had chosen eight. The
 // failure named the assertion rather than the type that produced the eight.
 //
-// ⚠️ AND THIS IS AN ABI DECISION. `__cxx_contention_t` appears in the mangled
+// AND THIS IS AN ABI DECISION. `__cxx_contention_t` appears in the mangled
 // names of the four exported entry points, so a program and a libc++ that
 // disagree about it do not link. That is the right failure — and it is why this
 // belongs in a header both sides read rather than in a flag one side passes.
@@ -34,7 +34,7 @@
 
 #include <__config>
 
-// ⚠️ THE CONDITION IS THE C LIBRARY ALONE. It used to also require
+// THE CONDITION IS THE C LIBRARY ALONE. It used to also require
 // `_LIBCPP_ABI_ATOMIC_WAIT_NATIVE_BY_SIZE`, mirroring upstream's own structure
 // — and measured, the overlay was reached and took the other branch, because
 // that macro is not defined at the point this header is first pulled in. The

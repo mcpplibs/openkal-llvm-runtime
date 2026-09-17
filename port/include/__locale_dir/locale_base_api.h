@@ -1,4 +1,4 @@
-// ⭐⭐ libc++ 的平台后端按 OS 宏选,而 openkal 的答案按「配置的是哪个 C 库」。
+// libc++ 的平台后端按 OS 宏选,而 openkal 的答案按「配置的是哪个 C 库」。
 //
 // THE OVERLAY, NOT AN EDIT. openkal-musl's `port/` carries every difference
 // from vendored musl in one directory that shadows it on the include path, and
@@ -30,7 +30,7 @@
 //
 // — Apple's locale extensions, which musl does not have and never claimed to.
 //
-// ⚠️ WHY THIS IS NOT EXPRESSIBLE AS A `__config_site` SWITCH, WHICH WAS TRIED
+// WHY THIS IS NOT EXPRESSIBLE AS A `__config_site` SWITCH, WHICH WAS TRIED
 // FIRST. `__config_site` is where this package states every other decision
 // (which C library, whether there is a filesystem, whether there is a random
 // device), and it is the right place for anything libc++ offers a knob for.
@@ -52,7 +52,7 @@
 
 #include <__config>
 
-// ⭐ THE PREDICATE IS THE C LIBRARY, FULL STOP — NOT "the C library, on Apple".
+// THE PREDICATE IS THE C LIBRARY, FULL STOP — NOT "the C library, on Apple".
 //
 // It was `&& defined(__APPLE__)` at first, because Apple was the target that
 // exposed it. Measured 2026-08-23 on the next one: `x86_64-windows-gnu` over

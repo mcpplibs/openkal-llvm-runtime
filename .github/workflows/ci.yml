@@ -31,7 +31,7 @@ jobs:
   runtime:
     name: build the runtime and run what stands above it (${{ matrix.toolchain }})
     runs-on: ubuntu-24.04
-    # ⚠️ Raised for the self-build step below, which is temporary. See the note
+    # Raised for the self-build step below, which is temporary. See the note
     # there: when mcpp#486 ships, that step goes and so does this.
     timeout-minutes: 90
     strategy:
@@ -59,7 +59,7 @@ jobs:
       - name: Install mcpp
         run: bash tools/install-mcpp.sh
 
-      # ⭐ THE ENGINE EVERY STEP BELOW WILL USE, COMPARED AGAINST THE ONE BUILT.
+      # THE ENGINE EVERY STEP BELOW WILL USE, COMPARED AGAINST THE ONE BUILT.
       #
       # The step above appends a directory to GITHUB_PATH, which governs the
       # steps that follow it, so that step cannot observe its own effect. Whether
@@ -97,7 +97,7 @@ jobs:
       - name: The runtime builds
         run: mcpp build
 
-      # ⚠️ THE ONE OBSERVATION A BUILD CANNOT MAKE.
+      # THE ONE OBSERVATION A BUILD CANNOT MAKE.
       #
       # An unwinder that cannot find the program's frame descriptions compiles,
       # links, and runs every path that does not throw. Measured while this
@@ -106,7 +106,7 @@ jobs:
       # _Unwind_Backtrace walking zero frames --- and nothing named the cause.
       # So the throw is the check, and the destructor beside it is what says the
       # unwind was correct rather than merely non-fatal.
-      # ⭐ THE UNWINDER, AND EVERY POSITION `__config_site` DECLARES.
+      # THE UNWINDER, AND EVERY POSITION `__config_site` DECLARES.
       #
       # The throw and the destructor beside it are what say the runtime is
       # really there. The rest of the probe asks whether the CLAIMS this package
@@ -222,7 +222,7 @@ jobs:
             echo "  ok  the declaration holds: no terminal support is claimed and none is present"
           fi
 
-      # ⭐⭐ THE SAME PROGRAM ON A MACHINE WITH NO OPERATING SYSTEM.
+      # THE SAME PROGRAM ON A MACHINE WITH NO OPERATING SYSTEM.
       #
       # Everything above this step runs on a host, and a host has a C library, a
       # C++ runtime and an unwinder already installed. A program that reaches
@@ -235,7 +235,7 @@ jobs:
       # cannot go green by accident, which is why the design document makes it
       # the acceptance criterion rather than one more row.
       #
-      # ⚠️ The assertion is on the OUTPUT and not on the exit status: firmware
+      # The assertion is on the OUTPUT and not on the exit status: firmware
       # that never reaches the payload exits zero, and so does a payload whose
       # console writes go nowhere.
       - name: Install the emulator
@@ -250,14 +250,14 @@ jobs:
           set -euo pipefail
           cd examples/same-source
           Q=$(ls -d "$HOME"/.mcpp/registry/data/xpkgs/xim-x-qemu-riscv/*/bin/qemu-system-riscv64 | head -1)
-          # ⚠️ Anchored on the BARE NAME, so a checkout that already carries a
+          # Anchored on the BARE NAME, so a checkout that already carries a
           # path is left alone rather than getting a path inside a path. The
           # manifest is required to carry the bare name; the note beside it says
           # why, and this is the step that relies on it.
           grep -q '"qemu-system-riscv64"' mcpp.toml \
             || { echo "::error::the manifest no longer carries the bare emulator name"; exit 1; }
           sed -i "s|\"qemu-system-riscv64\"|\"$Q\"|" mcpp.toml
-          # ⚠️ `--target riscv64-none-elf`, AND THE FLAG IS THE WHOLE STEP.
+          # `--target riscv64-none-elf`, AND THE FLAG IS THE WHOLE STEP.
           #
           # This manifest carries no `[build] target`, so a bare `mcpp run`
           # builds for the HOST and passes — the four lines below appear either
@@ -271,10 +271,10 @@ jobs:
           grep -q 'Boot HART'       out.log   # firmware ran; this is OpenSBI
           grep -q 'sorted: 2 4 7'   out.log   # containers + algorithms + the allocator
           grep -q 'caught: 42'      out.log   # the unwinder found the handler
-          grep -q 'unwound: true'   out.log   # ⭐ and ran a destructor on the way
+          grep -q 'unwound: true'   out.log   # and ran a destructor on the way
           grep -q 'import std over openkal: ok' out.log
 
-      # ⭐⭐ AND THE SAME SOURCE ON THIS MACHINE, WHICH IS WHAT MAKES THE STEP
+      # AND THE SAME SOURCE ON THIS MACHINE, WHICH IS WHAT MAKES THE STEP
       # ABOVE A DEMONSTRATION RATHER THAN AN ILLUSTRATION.
       #
       # Nothing is edited between the two commands — no `#if`, no second
@@ -289,7 +289,7 @@ jobs:
           grep -q 'import std over openkal: ok' host.log
           # The four lines are the same four lines.
           #
-          # ⚠️ `tr -d '\r'` ON BOTH SIDES, AND IT IS NOT COSMETIC. The bare-metal
+          # `tr -d '\r'` ON BOTH SIDES, AND IT IS NOT COSMETIC. The bare-metal
           # run reaches the console through an emulated 16550 UART, and a serial
           # console terminates lines with CRLF; the native run does not. Without
           # this the diff reports four differing lines whose visible text is
@@ -299,14 +299,14 @@ jobs:
           diff <(grep -E '^(sorted|caught|unwound|import std over openkal):' out.log  | tr -d '\r') \
                <(grep -E '^(sorted|caught|unwound|import std over openkal):' host.log | tr -d '\r')
 
-      # ⭐⭐ AND THE SAME SOURCE FOR TWO MACHINES THIS ONE IS NOT.
+      # AND THE SAME SOURCE FOR TWO MACHINES THIS ONE IS NOT.
       #
       # The two steps above prove the source does not know which machine it is
       # for. These prove the BUILD does not need to be on it: one Linux host
       # produces a PE and a Mach-O, and the jobs below run them on the real
       # thing with nothing installed.
       #
-      # ⚠️ THE ARTEFACT IS THE ARGUMENT, WHICH IS WHY THOSE JOBS INSTALL NOTHING.
+      # THE ARTEFACT IS THE ARGUMENT, WHICH IS WHY THOSE JOBS INSTALL NOTHING.
       # Not mcpp, not a compiler, not a C runtime — the program carries its C
       # library, its C++ runtime and its unwinder, and what remains is the
       # operating system it was built for. A run that needed a redistributable
@@ -325,13 +325,13 @@ jobs:
             echo "$t → $(file -b "$a")"
             cp "$a" "$RUNNER_TEMP/cross/"
           done
-          # ⚠️ The format is asserted here rather than left to the run jobs. A
+          # The format is asserted here rather than left to the run jobs. A
           # run that fails tells you the program did not work; this tells you
           # what was produced, and the two failures need different fixes.
           file "$RUNNER_TEMP/cross/openkal-same-source.exe" | grep -q 'PE32+ executable'
           file "$RUNNER_TEMP/cross/openkal-same-source"     | grep -q 'Mach-O 64-bit arm64'
 
-      # ⭐ AND A TRANSLATION UNIT THAT INCLUDES A STANDARD HEADER, FOR THE SAME TWO.
+      # AND A TRANSLATION UNIT THAT INCLUDES A STANDARD HEADER, FOR THE SAME TWO.
       #
       # `same-source` imports std, and the std module is compiled with this
       # package's own flags, so it cannot see what a consumer's translation unit
@@ -359,7 +359,7 @@ jobs:
           if-no-files-found: error
 
   # ---------------------------------------------------------------------------
-  # ⭐⭐ THE ACCEPTANCE CRITERION FOR PORTABILITY OF THE ARTEFACT.
+  # THE ACCEPTANCE CRITERION FOR PORTABILITY OF THE ARTEFACT.
   #
   # A cross build that produces a well-formed file proves the compiler was told
   # the right target. It does not prove the program runs, and every difference
@@ -367,7 +367,7 @@ jobs:
   # thread-local, the unwinder's search for its own tables, the personality
   # routine — links successfully and fails at run time.
   #
-  # ⚠️ These jobs deliberately have NO toolchain steps. If one is ever added
+  # These jobs deliberately have NO toolchain steps. If one is ever added
   # because "the program needs it", that is the finding, not the fix.
   run-on-windows:
     name: the artefact built on Linux runs on Windows
@@ -386,7 +386,7 @@ jobs:
           ./art/openkal-same-source.exe 2>&1 | tee out.log
           grep -q 'sorted: 2 4 7'   out.log
           grep -q 'caught: 42'      out.log
-          # ⭐ The line a link cannot fake: a destructor ran during the unwind,
+          # The line a link cannot fake: a destructor ran during the unwind,
           # so libunwind found `.eh_frame` by reading the image rather than by
           # asking the operating system to enumerate modules.
           grep -q 'unwound: true'   out.log
@@ -403,14 +403,14 @@ jobs:
       - name: It runs, and it unwinds
         run: |
           set -euo pipefail
-          # ⚠️ The executable bit does not survive an artefact upload.
+          # The executable bit does not survive an artefact upload.
           chmod +x art/openkal-same-source
-          # ⚠️ AND THE SIGNATURE DOES. arm64 macOS refuses an unsigned image, so
+          # AND THE SIGNATURE DOES. arm64 macOS refuses an unsigned image, so
           # this is asserted before the run: a failure here is "the linker did
           # not ad-hoc sign it", which is a different repair from "the program
           # crashed".
           codesign -dv art/openkal-same-source 2>&1 | grep -q 'adhoc\|Signature'
-          # ⚠️ A CRASH IS DIAGNOSED HERE RATHER THAN GUESSED AT LATER. This is
+          # A CRASH IS DIAGNOSED HERE RATHER THAN GUESSED AT LATER. This is
           # the first time an artefact of this stack has run on this system, and
           # the interesting failures — the entry point's assumptions about what
           # the kernel hands it, the thread pointer, the two borrowed names —
@@ -418,18 +418,18 @@ jobs:
           # One CI cycle that prints a backtrace is worth several that do not.
           if ! ./art/openkal-same-source > out.log 2>&1; then
             echo "--- how far the loader got ---"
-            # ⚠️ To a file, then read. Piping into `tail` interleaves dyld's
+            # To a file, then read. Piping into `tail` interleaves dyld's
             # output with the shell's own report of the signal, and the last
             # lines — the ones that say which initializer was running — are the
             # ones that get lost.
             DYLD_PRINT_INITIALIZERS=1 ./art/openkal-same-source > dyld.log 2>&1 || true
             tail -40 dyld.log
             echo "--- it did not run; what the debugger saw ---"
-            # ⭐ `lr` IS THE DATUM. A jump to address 0 leaves no frame to
+            # `lr` IS THE DATUM. A jump to address 0 leaves no frame to
             # unwind, so `bt` says only "frame #0: 0x0" — which is the symptom
             # restated. The link register still holds the return address of
             # whoever made that call, and `image lookup` turns it into a name.
-            # ⚠️ `-k` AND NOT `-o`. In `--batch` lldb abandons the remaining
+            # `-k` AND NOT `-o`. In `--batch` lldb abandons the remaining
             # `-o` commands after the first one that errors, and reading
             # register state at a PC of 0 errors — so the three commands that
             # would have said something never ran. `-k` is the list lldb
@@ -454,7 +454,7 @@ jobs:
           grep -q 'import std over openkal: ok' out.log
 
   # ---------------------------------------------------------------------------
-  # ⭐⭐ THE HOST DIMENSION — THE HALF OF THE CLAIM THE JOBS ABOVE DO NOT TOUCH.
+  # THE HOST DIMENSION — THE HALF OF THE CLAIM THE JOBS ABOVE DO NOT TOUCH.
   #
   # Everything above builds on Linux. That establishes "one host reaches every
   # target" and leaves open the thing an N×N matrix would otherwise have to
@@ -462,7 +462,7 @@ jobs:
   # — the target side is a set of packages and the compiler is a retargetable
   # clang, so N hosts × N targets collapses to N implementations plus one tool.
   #
-  # ⚠️ THAT IS A CLAIM, AND CLAIMS OF THIS SHAPE HAVE BEEN WRONG HERE BEFORE:
+  # THAT IS A CLAIM, AND CLAIMS OF THIS SHAPE HAVE BEEN WRONG HERE BEFORE:
   # the Linux host needed four separate repairs before it reached PE, and every
   # one of them was invisible until a build was actually run. Two more hosts
   # cost two jobs; asserting the collapse without running them costs a paragraph
@@ -510,7 +510,7 @@ jobs:
       - name: Install mcpp
         run: bash tools/install-mcpp.sh
 
-      # ⭐ THE ENGINE EVERY STEP BELOW WILL USE, COMPARED AGAINST THE ONE BUILT.
+      # THE ENGINE EVERY STEP BELOW WILL USE, COMPARED AGAINST THE ONE BUILT.
       #
       # The step above appends a directory to GITHUB_PATH, which governs the
       # steps that follow it, so that step cannot observe its own effect. Whether
@@ -534,7 +534,7 @@ jobs:
           fi
           echo "  every step below runs $on_path, built from $MCPP_SOURCE_REF"
 
-      # ⭐ THE SAME ENGINE AND THE SAME STACK AS THE LINUX JOB, FROM A DIFFERENT
+      # THE SAME ENGINE AND THE SAME STACK AS THE LINUX JOB, FROM A DIFFERENT
       # HOST. This job had neither: it installed the released engine and
       # resolved this ecosystem from the index, so a change spanning these
       # repositories was validated on one host of three and reported as
@@ -542,7 +542,7 @@ jobs:
       - name: Select the toolchain
         run: |
           set -euo pipefail
-          # ⚠️ INSTALL, THEN SELECT. `toolchain default` names a toolchain and
+          # INSTALL, THEN SELECT. `toolchain default` names a toolchain and
           # does not fetch one, so selecting an absent payload fails with
           # `llvm@22.1.8 is not installed` — measured on both rows of this job.
           mcpp toolchain install llvm 22.1.8
@@ -563,9 +563,9 @@ jobs:
             echo "$t → $(file -b "$a" 2>/dev/null || echo built)"
           done
 
-      # ⭐ And the one that is this machine, run rather than inspected — the same
+      # And the one that is this machine, run rather than inspected — the same
       # criterion the Linux job holds itself to, applied from a different host.
-      # ⭐ AND A HOSTED C++ PROGRAM, WHICH IS WHERE THREADS AND FILES ARE.
+      # AND A HOSTED C++ PROGRAM, WHICH IS WHERE THREADS AND FILES ARE.
       #
       # `same-source` also runs on bare metal, so it cannot start a thread;
       # `examples/cxx` can, and on Windows a joined std::thread was an access
@@ -583,7 +583,7 @@ jobs:
           grep -q 'ok: a detached thread runs and ends' out.log
           grep -q "ok: a string grows past the allocator's own mappings" out.log
 
-      # ⚠️ AND BUILT WITH --release, WHICH IS WHAT A USER SHIPS. Until
+      # AND BUILT WITH --release, WHICH IS WHAT A USER SHIPS. Until
       # openkal-macos 0.9.1 a release program faulted before `main' on macOS (a
       # returned register declared an input), and until openkal-windows 0.7.1 its
       # arguments were shortened on Windows (a loop became `wcslen'). The dev

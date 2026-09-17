@@ -10,11 +10,11 @@
 #   set    --- the engine built from that reference, which is how a change to
 #              mcpp is validated against this ecosystem before it is merged.
 #
-# ⚠️ THE PIN MAY NAME A RELEASE THIS RUN IS VALIDATING, and so may not exist. In
+# THE PIN MAY NAME A RELEASE THIS RUN IS VALIDATING, and so may not exist. In
 # that case the bootstrap takes whatever the index has; it is only the compiler
 # that compiles the compiler, and the build it produces is what goes on PATH.
 #
-# ⚠️ WHY THIS IS A SCRIPT AND NOT A STEP. It was a step in one job of this
+# WHY THIS IS A SCRIPT AND NOT A STEP. It was a step in one job of this
 # workflow and absent from another, so that job installed a released engine and
 # built manifests written for an unreleased one. The engine accepts a manifest
 # key it does not know without failing, so the mismatch does not announce
@@ -58,7 +58,7 @@ src="${RUNNER_TEMP:-/tmp}/mcpp-src"
 # source compiled by the mcpp installed above, which is what removing it leaves.
 rm -f "$src/.xlings.json"
 
-# ⚠️ THE PRODUCT OF THIS BUILD IS IDENTIFIED BY ABSENCE, NOT BY RECENCY.
+# THE PRODUCT OF THIS BUILD IS IDENTIFIED BY ABSENCE, NOT BY RECENCY.
 #
 # `target/` holds one directory per configuration and accumulates them, and a
 # restored cache writes every timestamp to the moment of extraction. Both
@@ -81,7 +81,7 @@ fi
 echo "$(cd "$(dirname "$built")" && pwd)" >> "$GITHUB_PATH"
 echo "under review: $("$built" --version)  (from $MCPP_SOURCE_REF)"
 
-# ⚠️ THE APPEND ABOVE IS NOT EVIDENCE THAT THE APPEND TOOK EFFECT.
+# THE APPEND ABOVE IS NOT EVIDENCE THAT THE APPEND TOOK EFFECT.
 #
 # `GITHUB_PATH` governs the steps that follow, so nothing observable in this one
 # can distinguish a directory that wins from a directory that is ignored, and a

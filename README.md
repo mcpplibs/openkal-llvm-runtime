@@ -62,7 +62,7 @@ __locale:439: error: unknown rune table for this platform
 
 With it at `1`, none.
 
-⚠️ **A claim that drifts from what the port provides fails neither the build nor
+**A claim that drifts from what the port provides fails neither the build nor
 the link.** It produces a program that takes a path the environment cannot
 support, and reports nothing. `_LIBCPP_HAS_RANDOM_DEVICE` was `0` until openkal
 gained `openkal.random`; `_LIBCPP_HAS_TERMINAL` was `1` while every `isatty`
@@ -94,7 +94,7 @@ only under it — LLVM's own runtimes build defines it for the same reason).
 objects, `ELF 64-bit LSB relocatable, UCB RISC-V`, with `__cxa_throw` and
 `__cxa_begin_catch` defined.
 
-⚠️ `import std;` on such a target is still refused, and not by this package:
+`import std;` on such a target is still refused, and not by this package:
 
 ```
 error: `import std;` is not available on 'riscv64-none-elf'
@@ -129,7 +129,7 @@ whether a hosted standard library is *present*.
 `examples/import-std` asserts the other half: `import std;` — the module, not the
 headers — with `std::ranges::sort` and `std::println`.
 
-## ⚠️ The observation a build cannot make
+## The observation a build cannot make
 
 The last two assertions are the package. Everything else here a runtime that was
 linked but never worked would also satisfy.
@@ -170,7 +170,7 @@ reaches one of them by mistake still works. There is nothing to reach on the
 fourth: the C library is openkal-musl, the standard library and the unwinder are
 this package's, and beneath them is firmware whose whole interface is `ecall`.
 
-⚠️ **And the artefacts are run on the real machines, not inspected.** Continuous
+**And the artefacts are run on the real machines, not inspected.** Continuous
 integration builds all three hosted targets on Linux and executes each on the
 system it was built for; `mcpp`'s own `openkal-cross` workflow builds them from
 three hosts and runs all nine combinations. Every difference this package had to
@@ -189,7 +189,7 @@ definitions — **links successfully and fails at run time**.
 The port is Apache-2.0. The vendored sources under `llvm/` are Apache-2.0 with
 LLVM exceptions; `llvm/LICENSE.TXT` is theirs.
 
-⚠️ They are **almost** unchanged, and the exceptions are enumerated rather than
+They are **almost** unchanged, and the exceptions are enumerated rather than
 described. `llvm/PATCHES.md` lists every one — five regions in four files, each
 between `// ─── openkal ─── BEGIN` and `// ─── openkal ─── END`, countable with
 
