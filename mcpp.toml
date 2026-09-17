@@ -516,10 +516,26 @@ sources = [
 ]
 
 [target.'cfg(windows)'.build]
+# WHICH TARGET THIS IS, STATED HERE RATHER THAN READ OFF `_WIN32`.
+#
+# `openkal-musl`'s `[c-abi] presents = "posix"` leaves `_WIN32` (and
+# `__MINGW32__`) undefined on this target now — the C environment a program
+# sees is POSIX, which is correct, and it is also what turned five identity
+# questions in vendored libunwind (`config.h`, `AddressSpace.hpp`,
+# `assembly.h`) into a hard `#error Unsupported target` or a silent fall into
+# the ELF branch. None of those five is the `<windows.h>`-reaching kind —
+# those are already answered by `OPENKAL` (package-wide, see the `cflags` /
+# `cxxflags` entries below) and stay answered regardless of this. These five
+# ask only "is this PE", which is a fact about the target and belongs here,
+# by the same reasoning `openkal-musl`'s own `port/src` now states it rather
+# than reading `_WIN32`. See `llvm/PATCHES.md`.
+#
 # `-fdwarf-exceptions` WAS HERE AND IS NOT ANY MORE, for the reason the macOS
 # block above records: it decides what a `throw` COMPILES INTO, so it is true of
 # the graph rather than of this package. mcpp derives it; see
 # `graph_runtime_compile_flags`.
+cflags   = ["-DOPENKAL_TARGET_WINDOWS=1"]
+cxxflags = ["-DOPENKAL_TARGET_WINDOWS=1"]
 sources = [
   "!llvm/libcxx/src/filesystem/int128_builtins.cpp",
   "llvm/compiler-rt/lib/builtins/*.c",
@@ -554,6 +570,12 @@ sources = [
   # `floatdidf.c` and its neighbours, which the generic list above already
   # supplies; taking the whole directory would define each of them twice.
   "llvm/compiler-rt/lib/builtins/x86_64/chkstk.S",
+  # `__dso_handle`, ONE SYMBOL OF `crtbegin.c` RATHER THAN THE WHOLE FILE ---
+  # see `port/src/dso_handle.c` for why the rest of that file is not wanted
+  # and this one symbol from it is. Not caught by the package-wide
+  # `port/src/*.cpp` glob above because it is `.c`, to match what it is
+  # standing in for.
+  "port/src/dso_handle.c",
   "!llvm/compiler-rt/lib/builtins/atomic*.c",
   "!llvm/compiler-rt/lib/builtins/clear_cache.c",
   # AND THE EXCLUSION IS DELETED RATHER THAN LEFT BELOW THE INCLUSION — an

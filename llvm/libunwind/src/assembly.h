@@ -184,7 +184,14 @@
 #define NO_EXEC_STACK_DIRECTIVE
 #endif
 
-#elif defined(_WIN32)
+// ─── openkal ─── BEGIN
+//
+// Assembler directive syntax by object format, not a platform service ---
+// the same identity question `config.h` asks, asked again because this file
+// is included from `.S` sources rather than from C++. `_WIN32` does not
+// reach this target; `OPENKAL_TARGET_WINDOWS` (mcpp.toml) does.
+#elif defined(_WIN32) || defined(OPENKAL_TARGET_WINDOWS)
+// ─── openkal ─── END
 
 #define SYMBOL_IS_FUNC(name)                                                   \
   .def name SEPARATOR                                                          \
@@ -202,7 +209,12 @@
 #endif
 #define HIDDEN_SYMBOL(name)
 
-#if defined(__MINGW32__)
+// ─── openkal ─── BEGIN
+// `__MINGW32__` is also gone on this target; `OPENKAL_TARGET_WINDOWS` takes
+// this branch in its place, for the same reason and with the same
+// measurement behind it as `config.h`'s `_LIBUNWIND_WEAK_ALIAS`.
+#if defined(__MINGW32__) || defined(OPENKAL_TARGET_WINDOWS)
+// ─── openkal ─── END
 #define WEAK_ALIAS(name, aliasname)                                            \
   .globl SYMBOL_NAME(aliasname) SEPARATOR                                      \
   EXPORT_SYMBOL(aliasname) SEPARATOR                                           \

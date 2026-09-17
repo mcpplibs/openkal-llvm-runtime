@@ -31,7 +31,16 @@
   #if defined(__aarch64__) || defined(__arm64__) || defined(__arm64e__)
     #define _LIBUNWIND_TRACE_RET_INJECT 1
   #endif
-#elif defined(_WIN32)
+// ─── openkal ─── BEGIN
+//
+// `_WIN32` names the target format here, not a platform service --- unlike
+// the sites `llvm/PATCHES.md` records, nothing below reaches `<windows.h>`.
+// openkal-musl's `[c-abi] presents = "posix"` leaves `_WIN32` undefined on
+// this target, so the identity has to come from somewhere else:
+// `OPENKAL_TARGET_WINDOWS`, which this package's own manifest defines for
+// its build of this target (mcpp.toml, `[target.'cfg(windows)'.build]`).
+#elif defined(_WIN32) || defined(OPENKAL_TARGET_WINDOWS)
+// ─── openkal ─── END
   #ifdef __SEH__
     #define _LIBUNWIND_SUPPORT_SEH_UNWIND 1
   #else
@@ -102,8 +111,21 @@
 #define _LIBUNWIND_WEAK_ALIAS(name, aliasname)                                 \
   extern "C" _LIBUNWIND_EXPORT __typeof(name) aliasname                        \
       __attribute__((weak, alias(#name)));
-#elif defined(_WIN32)
-#if defined(__MINGW32__)
+// ─── openkal ─── BEGIN
+//
+// Same target, same reason: `_WIN32` is gone on this target, and
+// `OPENKAL_TARGET_WINDOWS` (mcpp.toml) stands in for it. The inner choice is
+// answered the same way: `__MINGW32__` is gone with it, so this always takes
+// the GNU form under openkal rather than the `__pragma(comment(linker, …))`
+// one, which is a construct of the MSVC driver this package is never built
+// with. openkal-musl's own `port/include/features.h` already measured that a
+// STRONG alias made with `__attribute__((alias(...)))` --- the form below,
+// `weak` omitted because this object format has no weak definition --- links
+// on this object format with this toolchain; that measurement is the reason
+// this is not a guess.
+#elif defined(_WIN32) || defined(OPENKAL_TARGET_WINDOWS)
+#if defined(__MINGW32__) || defined(OPENKAL_TARGET_WINDOWS)
+// ─── openkal ─── END
 #define _LIBUNWIND_WEAK_ALIAS(name, aliasname)                                 \
   extern "C" _LIBUNWIND_EXPORT __typeof(name) aliasname                        \
       __attribute__((alias(#name)));
@@ -132,10 +154,20 @@
 #endif
 #endif
 
+// ─── openkal ─── BEGIN
+//
+// `__MINGW32__` is one of the names that already routes this to
+// `__builtin_alloca` rather than to the `_WIN32`-only branch below, which
+// calls `_malloca` / `_freea` --- routines of the MSVC CRT that this
+// package's C library does not carry. `OPENKAL_TARGET_WINDOWS` has to join
+// it HERE, at the same tier as `__MINGW32__`, and not be added to the
+// `_WIN32`-only branch below: `__MINGW32__` is also gone on this target, and
+// without this the branch that assumes MSVC's CRT would be the one taken.
+// ─── openkal ─── END
 #ifndef _LIBUNWIND_REMEMBER_HEAP_ALLOC
 #if defined(_LIBUNWIND_REMEMBER_STACK_ALLOC) || defined(__APPLE__) ||          \
     defined(__linux__) || defined(__ANDROID__) || defined(__MINGW32__) ||      \
-    defined(_LIBUNWIND_IS_BAREMETAL)
+    defined(OPENKAL_TARGET_WINDOWS) || defined(_LIBUNWIND_IS_BAREMETAL)
 #define _LIBUNWIND_REMEMBER_ALLOC(_size) __builtin_alloca(_size)
 #define _LIBUNWIND_REMEMBER_FREE(_ptr)                                         \
   do {                                                                         \
