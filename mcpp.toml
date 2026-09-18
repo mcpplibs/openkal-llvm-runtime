@@ -215,17 +215,7 @@ sources = [
 # provides rather than around it.
 cflags = ["-DDISABLE_AARCH64_FMV=1"]
 
-# MUSL SUPPLIES THE C LIBRARY FOR EVERY HOSTED TARGET THIS PACKAGE BUILDS FOR.
-#
-# libc++ and libc++abi reach for the C library's headers; freestanding targets
-# have no C library to reach for, and reach into openkal-llvm-runtime's own
-# llvm-generated/freestanding directory instead. So the dependency is stated
-# per target: every target except os = "none" pulls in musl, and the engine
-# realises its [c-abi] declaration there. Freestanding has no c-abi in the
-# graph, the c-abi probe has nothing to check, and the structural mismatch
-# (declared wchar=32, measured 16 on a freestanding toolchain that musl does
-# not cover) does not arise.
-[target.'cfg(not(os = "none"))'.dependencies]
+[dependencies]
 openkal-musl = "0.15.0"
 
 [build]
