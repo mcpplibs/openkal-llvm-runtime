@@ -148,8 +148,10 @@ int main() {
 
     check(fs::copy_file(dir / "a.txt", dir / "b.txt", ec) && !ec,
           "a file is copied");
+    if (ec) std::printf("        copy_file ec: %d %s\n", ec.value(), ec.message().c_str());
     check(fs::file_size(dir / "b.txt", ec) == 10 && !ec,
           "and the copy has the same size");
+    if (ec) std::printf("        file_size(b.txt) ec: %d %s\n", ec.value(), ec.message().c_str());
 
     // AND THE OPERATION openkal HAS NO ATOM FOR, CHECKED AS A REFUSAL.
     //
