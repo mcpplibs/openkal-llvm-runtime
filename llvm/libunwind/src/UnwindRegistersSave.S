@@ -121,7 +121,17 @@ DEFINE_LIBUNWIND_FUNCTION("#__unw_getcontext")
 #  thread_state pointer is in rdi
 #
 DEFINE_LIBUNWIND_FUNCTION(__unw_getcontext)
-#if defined(_WIN64)
+# ─── openkal ─── BEGIN
+# Which argument register the caller used, not a platform service --- the
+# machine code this package produces is still Win64 (see the design's own
+# table for this target), so a caller here still passes `thread_state` in
+# `%rcx`, and reading it out of `%rdi` instead is what a SysV callee does.
+# `_WIN64` is gone from this target along with `_WIN32`;
+# `OPENKAL_TARGET_WINDOWS` (mcpp.toml) is this package's own manifest
+# stating it, exactly as `okm_setjmp.S` states the equivalent fact for
+# `jmp_buf` --- this file is not installed, so it can read it.
+#if defined(_WIN64) || defined(OPENKAL_TARGET_WINDOWS)
+# ─── openkal ─── END
 #define PTR %rcx
 #define TMP %rdx
 #else
@@ -154,7 +164,13 @@ DEFINE_LIBUNWIND_FUNCTION(__unw_getcontext)
   # skip fs
   # skip gs
 
-#if defined(_WIN64)
+# ─── openkal ─── BEGIN
+# The second of two: whether the vector registers this record holds are the
+# caller's to preserve. On Win64 they are not, so this file must save them;
+# on SysV the callee owns none of them and there is nothing here to save.
+# Same target, same answer as above.
+#if defined(_WIN64) || defined(OPENKAL_TARGET_WINDOWS)
+# ─── openkal ─── END
   movdqu %xmm0,176(PTR)
   movdqu %xmm1,192(PTR)
   movdqu %xmm2,208(PTR)

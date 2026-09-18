@@ -109,7 +109,16 @@ extern char __eh_frame_hdr_end;
 extern char __exidx_start;
 extern char __exidx_end;
 
-#elif defined(_LIBUNWIND_SUPPORT_DWARF_UNWIND) && defined(_WIN32)
+// ─── openkal ─── BEGIN
+// `_WIN32` on this line is the OUTER question --- "is this even the PE
+// branch" --- and it is an identity question, not a platform-service one;
+// the service question is the `OPENKAL` that already decides what is INSIDE
+// the branch, just below. `OPENKAL_TARGET_WINDOWS` (mcpp.toml) is what
+// answers the outer one now that `_WIN32` does not reach this target. See
+// `config.h` for the fuller account.
+#elif defined(_LIBUNWIND_SUPPORT_DWARF_UNWIND) &&                              \
+    (defined(_WIN32) || defined(OPENKAL_TARGET_WINDOWS))
+// ─── openkal ─── END
 
 // ─── openkal ─── BEGIN
 //
@@ -589,7 +598,12 @@ inline bool LocalAddressSpace::findUnwindSections(
                              (void *)info.arm_section, (void *)info.arm_section_length);
   if (info.arm_section && info.arm_section_length)
     return true;
-#elif defined(_LIBUNWIND_SUPPORT_DWARF_UNWIND) && defined(_WIN32)
+// ─── openkal ─── BEGIN
+// The same outer identity question as the declaration above, answered the
+// same way.
+#elif defined(_LIBUNWIND_SUPPORT_DWARF_UNWIND) &&                              \
+    (defined(_WIN32) || defined(OPENKAL_TARGET_WINDOWS))
+// ─── openkal ─── END
 // ─── openkal ─── BEGIN
 #if defined(OPENKAL)
   // The same walk upstream does, over one module instead of every module, and

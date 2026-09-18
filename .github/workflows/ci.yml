@@ -23,7 +23,7 @@ on:
 
 env:
   MCPP_SOURCE_REF: ${{ github.event.inputs.mcpp_ref || vars.MCPP_SOURCE_REF }}
-  MCPP_VERSION: 2026.8.27.1
+  MCPP_VERSION: 2026.9.18.3
   XLINGS_VERSION: v2026.8.17.2
   XLINGS_NON_INTERACTIVE: '1'
 
@@ -576,12 +576,19 @@ jobs:
           set -euo pipefail
           cd examples/cxx
           rm -rf target
-          # The other observations were written for Linux; this step asks for the
-          # thread, so a difference elsewhere is reported without failing it.
-          mcpp run --target '${{ matrix.native }}' 2>&1 | tee out.log || true
-          grep -q 'ok: a thread is started and joined' out.log
-          grep -q 'ok: a detached thread runs and ends' out.log
-          grep -q "ok: a string grows past the allocator's own mappings" out.log
+          # The cxx-example exits non-zero on any assertion failure; `set -e'
+          # plus `pipefail' make that fail this step rather than hiding it.
+          # A `|| true' used to live here (added 2026-09-14 to mask a host's
+          # own kernel-abi gap), with three grep assertions on lines that
+          # happen to pass on every host: it turned the step green while the
+          # program itself reported `-- failures: 7 --'. Stripped 2026-09-18
+          # so the CI reflects the program. The Windows host fails 7
+          # assertions (5 symlink + 2 copy_file/file_size) against
+          # openkal-windows 0.8.0 — recorded in
+          # openkal/.agents/docs/2026-09-18-c-environment-record.md §6 as a
+          # kernel-abi limitation the c-environment wave did not touch.
+          mcpp run --target '${{ matrix.native }}' 2>&1 | tee out.log
+          grep -q 'failures: 0' out.log
 
       # AND BUILT WITH --release, WHICH IS WHAT A USER SHIPS. Until
       # openkal-macos 0.9.1 a release program faulted before `main' on macOS (a
@@ -599,10 +606,10 @@ jobs:
           mcpp build --release --target '${{ matrix.native }}'
           exe=$(find target -type f -path '*/bin/*' \( -name 'openkal-cxx-example' -o -name 'openkal-cxx-example.exe' \) | head -1)
           test -n "$exe" || { echo "::error::the release build produced no program"; exit 1; }
-          "$exe" 2>&1 | tee out.log || true
-          grep -q 'ok: a thread is started and joined' out.log
-          grep -q 'ok: a detached thread runs and ends' out.log
-          grep -q "ok: a string grows past the allocator's own mappings" out.log
+          # Same reasoning as the dev step above: the program exits non-zero on
+          # any assertion failure and `pipefail' propagates that to the step.
+          "$exe" 2>&1 | tee out.log
+          grep -q 'failures: 0' out.log
 
       - name: The artefact for this host runs on it
         run: |
