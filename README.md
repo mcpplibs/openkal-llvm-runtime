@@ -9,6 +9,17 @@ C library.
 openkal-llvm-runtime = "0.11.0"
 ```
 
+> **Engine floor (mcpp 2026.9.18.3):** this version of this package pins
+> `openkal-musl 0.15.0` and inherits its `[c-abi]` declaration. The engine's
+> `cenv_probe::verify` strips host macros (`-U_WIN32` / `-U_WIN64` /
+> `-U__MINGW32__` / `-U__MINGW64__`) on Windows hosts before reading the
+> predefined macros that back the declaration, and `cenv::realise` forces
+> `-fno-short-wchar` on freestanding wchar. Older engines silently
+> misbuild this package on Windows × freestanding (the cross-build to
+> `riscv64-none-elf` etc. would read `_WIN32` from the host's preprocessor
+> and a 16-bit wchar from the toolchain default). Upgrade:
+> `xlings install mcpp --force`.
+
 A C++ standard library is not portable in the way a program is. It is
 *configured* for one C library and compiled against that library's headers, and
 a build that merely finds the headers is not the same thing. The criterion is
