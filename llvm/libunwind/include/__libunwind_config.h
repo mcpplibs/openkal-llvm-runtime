@@ -46,7 +46,24 @@
 #  define _LIBUNWIND_HIGHEST_DWARF_REGISTER _LIBUNWIND_HIGHEST_DWARF_REGISTER_X86
 # elif defined(__x86_64__)
 #  define _LIBUNWIND_TARGET_X86_64 1
-#  if defined(_WIN64)
+// ─── openkal ─── BEGIN
+// The record's SIZE, not a platform service --- `_WIN64` selects the Win64
+// calling convention's larger register set, the same fact `openkal-musl`'s
+// `okm_setjmp.S` sizes `jmp_buf` for, and it is gone on this target along
+// with `_WIN32`. THIS HEADER IS INSTALLED (`llvm/libunwind/include/`, read
+// through `unwind.h` and `libunwind.h`, both public), so it cannot read
+// `OPENKAL_TARGET_WINDOWS` --- that is this package's own private build
+// define (mcpp.toml) and an application calling `unw_getcontext` directly
+// against `unw_context_t` does not see it. `__CYGWIN__` is read instead,
+// for the same reason `openkal-musl`'s `bits/setjmp.h` reads it: mcpp keeps
+// it defined target-wide, an application's compile included.
+// `UnwindRegistersSave.S` writes exactly the record sized here and reads
+// `OPENKAL_TARGET_WINDOWS` rather than `__CYGWIN__`, because it is NOT
+// installed --- compiled only by this package's own build, like
+// `okm_setjmp.S`. The two answer the same question about the same target
+// without reading the same macro, which is what has to hold; see that file.
+#  if defined(_WIN64) || defined(__CYGWIN__)
+// ─── openkal ─── END
 #    define _LIBUNWIND_CONTEXT_SIZE 54
 #    ifdef __SEH__
 #      define _LIBUNWIND_CURSOR_SIZE 204

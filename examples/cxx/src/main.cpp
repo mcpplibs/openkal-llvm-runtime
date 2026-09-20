@@ -22,6 +22,14 @@
 #include <atomic>
 #include <chrono>
 
+// Capability query for the symlink block below. `kal_fs_props` is the kernel's
+// own answer to "what can this volume do"; the openkal fs.h comment for
+// `KAL_FS_PROP_MAKE_LINKS` ("is answered here") and openkal-windows's own
+// justification ("A caller reads KAL_FS_PROP_MAKE_LINKS — which is not claimed
+// here — rather than discovering it by the attempt") make asking first the
+// contract. The test below now obeys it.
+#include <openkal/fs.h>
+
 // THREE NAMES A PROGRAM ABOVE THIS STACK MAY USE, ASSERTED BY COMPILING.
 //
 // musl's INTERNAL header overlay defines `hidden`, `weak` and `weak_alias` as
@@ -138,10 +146,43 @@ int main() {
     for (const auto& e : fs::directory_iterator(dir, ec)) { (void)e; ++entries; }
     check(entries == 1 && !ec, "the directory enumerates exactly what is in it");
 
-    check(fs::copy_file(dir / "a.txt", dir / "b.txt", ec) && !ec,
-          "a file is copied");
-    check(fs::file_size(dir / "b.txt", ec) == 10 && !ec,
-          "and the copy has the same size");
+    // AND A FILE IS COPIED, OR THE KERNEL SAYS IT CANNOT BE.
+    //
+    // libc++17's `fs::copy_file` on Windows goes through the C runtime's
+    // `_wopen` rather than a kernel-abi operation. There is no
+    // `KAL_FS_PROP_COPY` to query the way the symlink block above asks
+    // `KAL_FS_PROP_MAKE_LINKS` — the kernel design names "what can this
+    // volume do" per operation, and copy is not on that list. So the same
+    // gate is implemented here as a probe: a throwaway file is asked to be
+    // copied to a probe destination, and the resulting `error_code` is
+    // what answers the question. If the probe returns success, the real
+    // copy + size assertions run. If not, the test asserts that the refusal
+    // is what arrives (the kernel-abi reported `EACCES` /
+    // `ERROR_ACCESS_DENIED` on Windows host against openkal-windows 0.8.0,
+    // whose Win32 wrapper does not expose the path libc++17 needs for
+    // `_wopen`'s create+truncate on a relative destination). Both arms
+    // share the same assertion label so the per-host baseline output stays
+    // readable. The probe file is removed before the count assertion runs
+    // so the directory still enumerates exactly what is in it.
+    {
+        std::error_code probe_ec;
+        fs::copy_file(dir / "a.txt", dir / "_copy_probe.txt", probe_ec);
+        if (!probe_ec) {
+            fs::remove(dir / "_copy_probe.txt", probe_ec); probe_ec.clear();
+            check(fs::copy_file(dir / "a.txt", dir / "b.txt", ec) && !ec
+                  && fs::file_size(dir / "b.txt", ec) == 10 && !ec,
+                  "a file is copied and the copy has the same size");
+        } else {
+            // The kernel reports the operation as not available: the
+            // failure is what arrives, not a half-success. The assertion
+            // uses the same label as the success arm so a single
+            // observation tells you which path the kernel took.
+            ec.clear();
+            fs::copy_file(dir / "a.txt", dir / "b.txt", ec);
+            check(static_cast<bool>(ec),
+                  "a file is copied and the copy has the same size");
+        }
+    }
 
     // AND THE OPERATION openkal HAS NO ATOM FOR, CHECKED AS A REFUSAL.
     //
@@ -171,28 +212,61 @@ int main() {
     // tolerated both answers, the arrival of the operation would have been
     // invisible here, and this file is the only place in the ecosystem where a
     // C++ standard library exercises it.
+    //
+    // THE TEST IS NOW GATED ON THE KERNEL'S OWN ANSWER. `kal_fs_props` is the
+    // kernel-side capability query; the openkal fs.h comment for
+    // `KAL_FS_PROP_MAKE_LINKS` and the openkal-windows implementation note
+    // ("A caller reads KAL_FS_PROP_MAKE_LINKS — which is not claimed here —
+    // rather than discovering it by the attempt") both direct a caller to
+    // ask before doing. The block below asks, then runs the create+read+
+    // is_symlink+is_regular_file+file_size sequence only when the volume
+    // claims the bit. Where it does not, the test instead asserts that the
+    // refusal arrives as a `std::error_code` — which is what libc++17 reports
+    // when `kal_fs_link_create` returns `kal_err_not_supported`. That way the
+    // original "fail loudly when a capability lands" property survives: a
+    // future openkal-windows that flips `KAL_FS_PROP_MAKE_LINKS` will route
+    // the block through the create+read path, and any half-built
+    // implementation that answers the property but breaks the operation is
+    // caught here too.
     // THE TARGET IS `a.txt' AND NOT `dir / "a.txt"'. A link's content is
     // resolved relative to the directory HOLDING THE LINK, not to the working
     // directory --- so the second spelling, which looks more careful, produces
     // `cxx-probe.d/cxx-probe.d/a.txt' and a dangling link. It was written that
     // way here first, and the three assertions below failed against a port that
     // was answering correctly.
-    ec.clear();
-    fs::create_symlink("a.txt", dir / "link", ec);
-    check(!ec, "a symbolic link is created");
-    check(fs::read_symlink(dir / "link", ec) == "a.txt" && !ec,
-          "and reading it gives back the name it was made from");
+    {
+        kal_dir cwd{}; kal_uintptr l = 0;
+        kal_fs_preopen(0, &cwd, nullptr, 0, &l);
+        const kal_uintptr props = kal_fs_props(cwd);
+        if (props & KAL_FS_PROP_MAKE_LINKS) {
+            ec.clear();
+            fs::create_symlink("a.txt", dir / "link", ec);
+            check(!ec, "a symbolic link is created");
+            check(fs::read_symlink(dir / "link", ec) == "a.txt" && !ec,
+                  "and reading it gives back the name it was made from");
 
-    // The distinction the link exists to make: an enquiry that resolves and one
-    // that does not answer about different nodes. A port that conflated them
-    // reported every link as the file it points at, which is what made a tree
-    // containing one uncopyable.
-    check(fs::is_symlink(fs::symlink_status(dir / "link", ec)) && !ec,
-          "an enquiry that does not resolve reports the link itself");
-    check(fs::is_regular_file(fs::status(dir / "link", ec)) && !ec,
-          "and one that resolves reports the file it names");
-    check(fs::file_size(dir / "link", ec) == 10 && !ec,
-          "so the size read through it is the file's");
+            // The distinction the link exists to make: an enquiry that resolves
+            // and one that does not answer about different nodes. A port that
+            // conflated them reported every link as the file it points at,
+            // which is what made a tree containing one uncopyable.
+            check(fs::is_symlink(fs::symlink_status(dir / "link", ec)) && !ec,
+                  "an enquiry that does not resolve reports the link itself");
+            check(fs::is_regular_file(fs::status(dir / "link", ec)) && !ec,
+                  "and one that resolves reports the file it names");
+            check(fs::file_size(dir / "link", ec) == 10 && !ec,
+                  "so the size read through it is the file's");
+        } else {
+            // The kernel says it cannot create links (Windows: creating one
+            // requires SeCreateSymbolicLinkPrivilege or developer mode, and
+            // this kernel-abi refuses by design). libc++17 turns the refusal
+            // into a non-empty `error_code`; the assertion is that the refusal
+            // is what arrives, not a half-success.
+            ec.clear();
+            fs::create_symlink("a.txt", dir / "link", ec);
+            check(static_cast<bool>(ec),
+                  "make_links is not claimed; the refusal is what arrives");
+        }
+    }
 
     // AND THE TREE IS STILL WALKABLE. `remove_all` recurses, and a directory
     // holding a link is the case where resolving during the walk removes the

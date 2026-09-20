@@ -139,6 +139,22 @@ emutls.c:164: call to undeclared function '_aligned_malloc'
 
 ---
 
+## `_WIN64`:同一个宏族的另一半,`_WIN32` 的 grep 找不到它
+
+`UnwindRegistersSave.S` / `UnwindRegistersRestore.S`(寄存器保存与恢复的机器码本身,Win64
+与 SysV 的参数寄存器和向量寄存器保存集不同)和 `__libunwind_config.h`(按同一约定给
+`unw_context_t` / `unw_cursor_t` 定大小)不读 `_WIN32`,读 `_WIN64`。同一个宏族,
+openkal-musl 的 `[c-abi] presents = "posix"` 把它和 `_WIN32`、`__MINGW32__` 一起取消
+定义,但一次 `grep -rn "_WIN32"` 看不见它,编译也不报错——四处一起静默改选到 SysV
+分支,保存例程仍旧往 `%rdi` 写,而 Win64 调用约定下调用者实际把指针传在 `%rcx`。表现
+只在运行期:第一次 `throw` 就在 `unw_getcontext` 里对一个由错误寄存器读出的地址(测得
+是空指针)写内存。已按 `libunwind` 已有的同一判据处理:内部四处(两个 `.S`、
+`Registers.hpp`)换成 `OPENKAL_TARGET_WINDOWS`;`__libunwind_config.h` 已安装(经
+`unwind.h` / `libunwind.h` 公开可达),换成 `__CYGWIN__`。下一次改这棵树,完整的检查是
+`grep -rn "_WIN32\|_WIN64\|__MINGW32__\|__MINGW64__"`,不是只 grep 第一个。
+
+---
+
 ## ⭐ 一个名字,不是五个
 
 五处补丁全部守卫在 **`OPENKAL`** 上,`cflags` 和 `cxxflags` 各给一次

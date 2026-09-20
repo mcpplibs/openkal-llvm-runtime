@@ -79,7 +79,13 @@ DEFINE_LIBUNWIND_FUNCTION(__libunwind_Registers_x86_64_jumpto)
 #
 # extern "C" void __libunwind_Registers_x86_64_jumpto(Registers_x86_64 *);
 #
-#if defined(_WIN64)
+# ─── openkal ─── BEGIN
+# Same target, same reason as `UnwindRegistersSave.S`: the machine code is
+# still Win64, so the pointer still arrives in `%rcx`, and `_WIN64` is what
+# used to say so before this target stopped defining it along with
+# `_WIN32`. `OPENKAL_TARGET_WINDOWS` (mcpp.toml) is read in its place.
+#if defined(_WIN64) || defined(OPENKAL_TARGET_WINDOWS)
+# ─── openkal ─── END
 # On entry, thread_state pointer is in rcx; move it into rdi
 # to share restore code below. Since this routine restores and
 # overwrites all registers, we can use the same registers for
@@ -120,7 +126,10 @@ DEFINE_LIBUNWIND_FUNCTION(__libunwind_Registers_x86_64_jumpto)
   # skip fs
   # skip gs
 
-#if defined(_WIN64)
+# ─── openkal ─── BEGIN
+# The vector registers, the second half of the same fact.
+#if defined(_WIN64) || defined(OPENKAL_TARGET_WINDOWS)
+# ─── openkal ─── END
   movdqu 176(%rdi),%xmm0
   movdqu 192(%rdi),%xmm1
   movdqu 208(%rdi),%xmm2
