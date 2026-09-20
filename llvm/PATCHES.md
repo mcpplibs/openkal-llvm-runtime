@@ -174,7 +174,7 @@ openkal-musl 的 `[c-abi] presents = "posix"` 把它和 `_WIN32`、`__MINGW32__`
 三支全部落空,直接 `#error`。
 
 它**不是**已安装的头,只由本包自己的构建编译,所以按本文件的规矩用私有 define
-`OPENKAL_TARGET_WINDOWS`——而 `__libunwind_config.h` 反过来用 `__mcpp_target_windows__`,
+`OPENKAL_TARGET_WINDOWS`——而 `__libunwind_config.h` 反过来用 `__MCPP_TARGET_WINDOWS__`,
 因为它**是**已安装的。两者读不同的宏,回答同一个关于同一个目标的问题,这正是下面那一节
 要求的性质。
 
