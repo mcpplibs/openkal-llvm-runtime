@@ -6,11 +6,11 @@ C library.
 
 ```toml
 [dependencies]
-openkal-llvm-runtime = "0.11.0"
+openkal-llvm-runtime = "0.12.0"
 ```
 
 > **Engine floor (mcpp 2026.9.18.3):** this version of this package pins
-> `openkal-musl 0.15.0` and inherits its `[c-abi]` declaration. The engine's
+> `openkal-musl 0.16.0` and inherits its `[c-abi]` declaration. The engine's
 > `cenv_probe::verify` strips host macros (`-U_WIN32` / `-U_WIN64` /
 > `-U__MINGW32__` / `-U__MINGW64__`) on Windows hosts before reading the
 > predefined macros that back the declaration, and `cenv::realise` forces
