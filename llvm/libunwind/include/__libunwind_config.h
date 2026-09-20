@@ -54,15 +54,24 @@
 // through `unwind.h` and `libunwind.h`, both public), so it cannot read
 // `OPENKAL_TARGET_WINDOWS` --- that is this package's own private build
 // define (mcpp.toml) and an application calling `unw_getcontext` directly
-// against `unw_context_t` does not see it. `__CYGWIN__` is read instead,
-// for the same reason `openkal-musl`'s `bits/setjmp.h` reads it: mcpp keeps
-// it defined target-wide, an application's compile included.
+// against `unw_context_t` does not see it. `__mcpp_target_windows__` is read
+// instead (mcpp 2026.9.21.1): mcpp states the target under its OWN name,
+// target-wide, an application's compile included. `__CYGWIN__` stays beside
+// it so this header is correct on an engine from either side of that release
+// --- the new name is absent before it, the old one is withdrawn after a
+// later one. The second operand exists so this file has no flag day, not for
+// redundancy, and goes once that withdrawal ships.
+//
+// THE OLD NAME WAS BORROWED AND MEANT SOMETHING ELSE. Upstream reads
+// `__CYGWIN__` as "Win32 is available"; a 30-member measurement found four
+// packages doing exactly that and reaching `#include <windows.h>`. It
+// answered this file's question only by accident.
 // `UnwindRegistersSave.S` writes exactly the record sized here and reads
 // `OPENKAL_TARGET_WINDOWS` rather than `__CYGWIN__`, because it is NOT
 // installed --- compiled only by this package's own build, like
 // `okm_setjmp.S`. The two answer the same question about the same target
 // without reading the same macro, which is what has to hold; see that file.
-#  if defined(_WIN64) || defined(__CYGWIN__)
+#  if defined(_WIN64) || defined(__mcpp_target_windows__) || defined(__CYGWIN__)
 // ─── openkal ─── END
 #    define _LIBUNWIND_CONTEXT_SIZE 54
 #    ifdef __SEH__

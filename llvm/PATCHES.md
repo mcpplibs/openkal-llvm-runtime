@@ -155,6 +155,32 @@ openkal-musl 的 `[c-abi] presents = "posix"` 把它和 `_WIN32`、`__MINGW32__`
 
 ---
 
+## 第六处:`compiler-rt/lib/builtins/int_lib.h`(2026-09-21)
+
+前五处是按「撤掉 `_WIN32` 后会落错分支」找出来的。**第六处是按「撤掉 `__CYGWIN__` 后会
+落错分支」找出来的,而当时没有人去找第二遍。**
+
+```c
+#if defined(__ELF__) || defined(__MINGW32__) || ... || defined(__CYGWIN__)
+    /* __attribute__((alias)) —— PE 要走的就是这一支 */
+#elif defined(__APPLE__) ...
+#elif defined(_WIN32) || defined(__UEFI__) ...
+#else
+#error Unsupported target
+```
+
+这个文件今天**靠 `__CYGWIN__` 偶然工作**:`_WIN32`/`__MINGW32__` 被 `[c-abi] presents =
+"posix"` 压掉,`__ELF__` 为假,只剩它。mcpp 撤掉 `__CYGWIN__` 之后(2026.9.21.1 的下一版),
+三支全部落空,直接 `#error`。
+
+它**不是**已安装的头,只由本包自己的构建编译,所以按本文件的规矩用私有 define
+`OPENKAL_TARGET_WINDOWS`——而 `__libunwind_config.h` 反过来用 `__mcpp_target_windows__`,
+因为它**是**已安装的。两者读不同的宏,回答同一个关于同一个目标的问题,这正是下面那一节
+要求的性质。
+
+⚠️ **下一次改这棵树,`grep` 的清单要加上 `__CYGWIN__`**:
+`grep -rn "_WIN32\|_WIN64\|__MINGW32__\|__MINGW64__\|__CYGWIN__"`。
+
 ## ⭐ 一个名字,不是五个
 
 五处补丁全部守卫在 **`OPENKAL`** 上,`cflags` 和 `cxxflags` 各给一次

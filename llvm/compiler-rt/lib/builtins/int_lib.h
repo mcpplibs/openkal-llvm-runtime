@@ -48,8 +48,29 @@
 #define XSTR(a) STR(a)
 #define SYMBOL_NAME(name) XSTR(__USER_LABEL_PREFIX__) #name
 
+// ─── openkal ─── BEGIN
+// `OPENKAL_TARGET_WINDOWS` joins this guard, and the alternative was a hard
+// `#error Unsupported target` a release from now.
+//
+// This target is PE, and PE takes the first branch: `__attribute__((alias))`
+// is what the GNU/clang toolchain emits for it. Today that branch is reached
+// through `__CYGWIN__`, which mcpp defines only because nothing else named
+// the target --- BY ACCIDENT, not by this file's intent. `_WIN32` and
+// `__MINGW32__` are suppressed here on purpose (`[c-abi] presents = "posix"`)
+// and `__ELF__` is false, so when `__CYGWIN__` is withdrawn --- it is, one
+// release after mcpp 2026.9.21.1 --- every operand of this `#if` goes false,
+// `__APPLE__` and `_WIN32`/`__UEFI__` below are false too, and the `#else`
+// is `#error Unsupported target`.
+//
+// The private define is the right name here, not `__mcpp_target_windows__`:
+// this file is NOT installed, it is compiled only by this package's own
+// build, and `mcpp.toml` carries `OPENKAL_TARGET_WINDOWS` to it in `cflags`.
+// That is the same rule the other five patches in this tree follow, and the
+// reason `__libunwind_config.h` does the opposite --- it IS installed. See
+// `llvm/PATCHES.md`.
 #if defined(__ELF__) || defined(__MINGW32__) || defined(__wasm__) ||           \
-    defined(_AIX) || defined(__CYGWIN__)
+    defined(_AIX) || defined(__CYGWIN__) || defined(OPENKAL_TARGET_WINDOWS)
+// ─── openkal ─── END
 #define COMPILER_RT_ALIAS(name, aliasname) \
   COMPILER_RT_ABI __typeof(name) aliasname __attribute__((__alias__(#name)));
 #elif defined(__APPLE__)
