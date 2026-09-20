@@ -6,19 +6,27 @@ C library.
 
 ```toml
 [dependencies]
-openkal-llvm-runtime = "0.12.0"
+openkal-llvm-runtime = "0.13.0"
 ```
 
-> **Engine floor (mcpp 2026.9.18.3):** this version of this package pins
-> `openkal-musl 0.16.0` and inherits its `[c-abi]` declaration. The engine's
-> `cenv_probe::verify` strips host macros (`-U_WIN32` / `-U_WIN64` /
-> `-U__MINGW32__` / `-U__MINGW64__`) on Windows hosts before reading the
-> predefined macros that back the declaration, and `cenv::realise` forces
-> `-fno-short-wchar` on freestanding wchar. Older engines silently
-> misbuild this package on Windows × freestanding (the cross-build to
-> `riscv64-none-elf` etc. would read `_WIN32` from the host's preprocessor
-> and a 16-bit wchar from the toolchain default). Upgrade:
-> `xlings install mcpp --force`.
+> **Engine floor (mcpp 2026.9.20.1):** this version of this package pins
+> `openkal-musl 0.17.0` and inherits its `[c-abi]` declaration. The engine
+> assembles the verification probe's command line in one place that REFUSES
+> to run it without a target selection (`cenv_probe::assemble_argv`), and
+> `cenv::realise` forces `-fno-short-wchar` on freestanding wchar. Older
+> engines silently misbuild this package on freestanding cross-builds
+> (`riscv64-none-elf` and the rest): their probe ran with no `--target=` at
+> all, so the compiler answered for the machine it was running on.
+>
+> **The floor named here was 2026.9.18.3 and that was wrong.** It credited
+> that release with stripping host macros (`-U_WIN32` and the MinGW pair) on
+> Windows hosts before reading the predefined macros. The strip was real and
+> it protected nothing: there was no target substitution in the freestanding
+> argv for it to compensate for, and deleting the host's predefines deleted
+> the one piece of evidence that would have said so. A measurement that
+> removes its own disagreement reports an agreement it never established.
+>
+> Upgrade: `xlings install mcpp --force`.
 
 A C++ standard library is not portable in the way a program is. It is
 *configured* for one C library and compiled against that library's headers, and
