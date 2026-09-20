@@ -221,19 +221,53 @@ run_dtors called, dtors=0,             &dtors=0x7ffffe9946c8
 自己的 key 建在第一次访问 `thread_local` **之前**,于是 emutls 的 key 在它之后才被析构,
 读到的值是对的。真实情形的顺序正好相反——**一个探针报不出它被构造成不会发生的那个顺序**。
 
+### 第三层:macOS 用另一个名字问同一件事,而弱引用探测在 Mach-O 上不成立
+
+**这一层是被上一层的判据挖出来的**——`examples/cxx` 新增那条 `thread_local` 断言之后,
+`aarch64-macos` 那条腿立刻红了,而在此之前该目标从未构造过带析构的 `thread_local`。
+
+```
+ld64.lld: error: undefined symbol: _tlv_atexit
+>>> referenced by main.cpp:316
+```
+
+clang 在 Mach-O 上把带非平凡析构的 `thread_local` 降解为 `_tlv_atexit`,在别处才是
+`__cxa_thread_atexit`。两者只差一个 dso handle,而 fallback 本来就不读它,所以不需要第二份
+实现——一个转发就够。供给 `_tlv_atexit` 的本来是 libSystem,而 libSystem 正是本栈替换掉的。
+
+放开守卫到 `__APPLE__` 之后**又红了一次**,这次是另一个符号:
+
+```
+ld64.lld: error: undefined symbol: __cxa_thread_atexit_impl
+```
+
+上游用的是**弱声明 + 判空**——`if (__cxa_thread_atexit_impl)`。那是 ELF 的习语:未解析的
+弱符号在那里**就是 0**。ld64 在静态链接里不这么做,于是**探测本身**成了未定义符号。
+在这个目标上这个探测也是多余的:能定义那个符号的是 libSystem。
+
+所以 Apple 直接走 fallback,而 fallback 的函数体被提出来命名,两个调用点共用一份实现。
+
 ### 修法:链表存进 key 自己的值
 
 key 的析构函数本来就被交给 key 的值。把链表存在那里,任何别的 key 的拆除都碰不到它,
 `dtors_alive` 也随之不需要——值非空就是「链表在」。
 
-**判据是两条,缺一不可**(`examples/cxx`,两个目标都跑):
+**判据是两条,缺一不可**(`examples/cxx`):
 
 ```
 ok: a thread_local is constructed in a spawned thread
 ok: and its destructor runs when that thread ends
 ```
 
-只断言「链接通过」或只断言「构造发生」的判据,会同时放过这两层。
+只断言「链接通过」或只断言「构造发生」的判据,会同时放过前两层。
+
+**三个目标都构建**(`x86_64-linux-gnu`、`x86_64-windows-gnu`、`aarch64-macos`,均从
+Linux 宿主交叉),前两个**实跑** `failures: 0`(Windows 经 wine)。macOS 的运行由 CI 的
+`host-dimension` / `run-on-macos` 覆盖。
+
+**这条判据是它自己挖出第三层的。** 加上它之前,三个目标里没有任何一个构造过带析构的
+`thread_local`,于是 macOS 那一侧的两个缺口都不在场——判据的价值不在于它今天绿,而在于
+它让一类从来没有对象的检查有了对象。
 
 ## 一个名字,不是五个
 

@@ -133,6 +133,29 @@ namespace {
       run_dtors(std::__libcpp_tls_get(dtors_key));
     }
   };
+
+  // THE FALLBACK'S BODY, NAMED so that the two callers are one implementation
+  // rather than two copies that drift apart.
+  int register_dtor(Dtor dtor, void* obj) {
+    // Initialize the dtors std::__libcpp_tls_key (uses __cxa_guard_*() for
+    // one-time initialization and __cxa_atexit() for destruction)
+    static DtorsManager manager;
+
+    auto head = static_cast<DtorList*>(::malloc(sizeof(DtorList)));
+    if (!head) {
+      return -1;
+    }
+
+    head->dtor = dtor;
+    head->obj = obj;
+    head->next = static_cast<DtorList*>(std::__libcpp_tls_get(dtors_key));
+    if (std::__libcpp_tls_set(dtors_key, head) != 0) {
+      ::free(head);
+      return -1;
+    }
+
+    return 0;
+  }
 } // namespace
 
 #endif // HAVE___CXA_THREAD_ATEXIT_IMPL
@@ -156,37 +179,55 @@ namespace {
 //
 // THE FALLBACK BELOW WAS ALREADY COMPLETE; only the export was missing. What
 // was NOT complete is where it kept its list --- see `run_dtors` above.
-#if defined(__linux__) || defined(__Fuchsia__) || defined(OPENKAL_TARGET_WINDOWS)
+#if defined(__linux__) || defined(__Fuchsia__) \
+    || defined(OPENKAL_TARGET_WINDOWS) || defined(__APPLE__)
 extern "C" {
 
   _LIBCXXABI_FUNC_VIS int __cxa_thread_atexit(Dtor dtor, void* obj, void* dso_symbol) throw() {
 #ifdef HAVE___CXA_THREAD_ATEXIT_IMPL
     return __cxa_thread_atexit_impl(dtor, obj, dso_symbol);
+#elif defined(__APPLE__)
+    // NO WEAK PROBE ON MACH-O, AND THE REASON IS THE OBJECT FORMAT.
+    //
+    // The `else` branch below declares `__cxa_thread_atexit_impl` weak and
+    // tests it against null. That is an ELF idiom: an unresolved weak symbol
+    // there IS zero. ld64 does not do that in a static link, so the probe
+    // itself becomes the error --- measured building `examples/cxx` for
+    // `aarch64-macos`:
+    //
+    //     ld64.lld: error: undefined symbol: __cxa_thread_atexit_impl
+    //
+    // The test is also pointless here: what would define that symbol is
+    // libSystem, and libSystem is what this stack replaces.
+    (void)dso_symbol;
+    return register_dtor(dtor, obj);
 #else
     if (__cxa_thread_atexit_impl) {
       return __cxa_thread_atexit_impl(dtor, obj, dso_symbol);
     } else {
-      // Initialize the dtors std::__libcpp_tls_key (uses __cxa_guard_*() for
-      // one-time initialization and __cxa_atexit() for destruction)
-      static DtorsManager manager;
-
-      auto head = static_cast<DtorList*>(::malloc(sizeof(DtorList)));
-      if (!head) {
-        return -1;
-      }
-
-      head->dtor = dtor;
-      head->obj = obj;
-      head->next = static_cast<DtorList*>(std::__libcpp_tls_get(dtors_key));
-      if (std::__libcpp_tls_set(dtors_key, head) != 0) {
-        ::free(head);
-        return -1;
-      }
-
-      return 0;
+      return register_dtor(dtor, obj);
     }
 #endif // HAVE___CXA_THREAD_ATEXIT_IMPL
   }
+
+#if defined(__APPLE__)
+  // APPLE ASKS FOR THE SAME THING UNDER A DIFFERENT NAME, and supplies it from
+  // libSystem --- which is exactly what openkal replaces.
+  //
+  // clang lowers a `thread_local` with a non-trivial destructor to a call to
+  // `_tlv_atexit` on Mach-O and to `__cxa_thread_atexit` elsewhere, so the
+  // Windows gap this file was opened for has an Apple twin, invisible until
+  // something in the examples declared such a variable:
+  //
+  //     ld64.lld: error: undefined symbol: _tlv_atexit
+  //
+  // The two differ only in the dso handle, which the fallback ignores. There
+  // is nothing to implement a second time.
+  _LIBCXXABI_FUNC_VIS void _tlv_atexit(Dtor dtor, void* obj) {
+    __cxa_thread_atexit(dtor, obj, nullptr);
+  }
+#endif
+
 } // extern "C"
 #endif // defined(__linux__) || defined(__Fuchsia__)
 } // namespace __cxxabiv1
