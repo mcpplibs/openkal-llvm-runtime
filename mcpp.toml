@@ -216,7 +216,7 @@ sources = [
 cflags = ["-DDISABLE_AARCH64_FMV=1"]
 
 [dependencies]
-openkal-musl = "0.17.0"
+openkal-musl = "0.18.0"
 
 [build]
 

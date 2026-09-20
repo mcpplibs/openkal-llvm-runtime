@@ -10,7 +10,7 @@ openkal-llvm-runtime = "0.13.0"
 ```
 
 > **Engine floor (mcpp 2026.9.20.1):** this version of this package pins
-> `openkal-musl 0.17.0` and inherits its `[c-abi]` declaration. The engine
+> `openkal-musl 0.18.0` and inherits its `[c-abi]` declaration. The engine
 > assembles the verification probe's command line in one place that REFUSES
 > to run it without a target selection (`cenv_probe::assemble_argv`), and
 > `cenv::realise` forces `-fno-short-wchar` on freestanding wchar. Older
