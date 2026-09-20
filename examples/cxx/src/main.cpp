@@ -43,6 +43,11 @@ static int hidden = 7;
 static int weak = 11;
 struct weak_alias { int value; };
 
+// THE thread_local PROBE'S SUBJECT, at file scope because a local struct's
+// destructor cannot reach a lambda capture. See the criterion in `main`.
+static std::atomic<int> tls_dtor_ran{0};
+struct TlsProbe { int v; ~TlsProbe() { tls_dtor_ran.store(v); } };
+
 static int depth_three(int n) { if (n > 2) throw std::runtime_error("thrown"); return n; }
 static int depth_two(int n)   { return depth_three(n) + 1; }
 static int depth_one(int n)   { return depth_two(n) + 1; }
@@ -284,6 +289,36 @@ int main() {
         // produced" and is exactly what a port that forgot to fill the buffer
         // would produce.
         check(!(a == b && b == c), "three draws from the entropy source differ");
+    }
+
+    // --- thread_local destructors, where no other C runtime supplies them ---
+
+    // TWO CHECKS, AND THE SECOND IS THE ONE THAT WAS SILENTLY FALSE.
+    //
+    // `__cxa_thread_atexit` is exported by upstream libc++abi on Linux and
+    // Fuchsia only, because everywhere else another runtime already defines it
+    // --- on an ordinary MinGW target, `libmingw32.a`. openkal replaces the C
+    // library and its runtime together, so both sides assumed the other would
+    // and the link failed by name on `x86_64-windows-gnu`.
+    //
+    // Exporting it was not enough. The fallback kept its list of pending
+    // destructors in a `__thread` variable, and this runtime is built with
+    // `-femulated-tls` for PE: emutls releases the thread's block behind a
+    // pthread key of its own, and the key destructor that walks the list runs
+    // after that, reading a FRESH ZEROED block at a different address. The
+    // link then succeeded, the program ran, and nothing was destroyed.
+    //
+    // So a check that only asserted construction --- or only asserted that the
+    // program linked --- would have passed through both defects. The list now
+    // lives in the key's own value, which no other key's teardown can reach.
+    {
+        std::atomic<int> seen{0};
+        std::thread t([&]{ thread_local TlsProbe p{7}; seen.store(p.v); });
+        t.join();
+        check(seen.load() == 7,
+              "a thread_local is constructed in a spawned thread");
+        check(tls_dtor_ran.load() == 7,
+              "and its destructor runs when that thread ends");
     }
 
     std::printf("-- failures: %d --\n", failures);
