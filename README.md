@@ -6,7 +6,7 @@ C library.
 
 ```toml
 [dependencies]
-openkal-llvm-runtime = "0.15.5"
+openkal-llvm-runtime = "0.15.6"
 ```
 
 > **Engine floor (mcpp 2026.9.20.1):** this version of this package pins
