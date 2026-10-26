@@ -222,3 +222,15 @@ fit it is not made. The larger half of that document is the list of places that
 did **not** need changing — twelve of the nineteen `#include <windows.h>` sites
 resolve themselves once the predicate is answered correctly, because libc++'s
 POSIX branch was already reaching openkal through musl.
+
+## Inside an ok image (0.16.0)
+
+For the target `<arch>-openkal` (openkal SPEC clause 12) the runtime is built
+into an **ok image** that `okrun` runs on Linux, macOS and Windows of its
+architecture. It takes the Linux selection --- the same C library above
+openkal, the same object format and calling convention --- and depends on
+`openkal-musl` 0.22.0 without its default `image-builtins` feature, since this
+package supplies the compiler runtime itself and a build has one.
+`examples/image-cxx` (an exception, a thread with its own thread-local
+variable, the containers, formatting) is built once on Linux for both
+architectures and run through okrun on four systems in CI.

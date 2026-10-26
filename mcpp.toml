@@ -1,7 +1,7 @@
 [package]
 namespace   = "mcpplibs"
 name        = "openkal-llvm-runtime"
-version     = "0.15.6"
+version     = "0.16.0"
 description = "LLVM's C++ runtime libraries — libc++, libc++abi and libunwind — configured for openkal-musl rather than for a host C library."
 license     = "Apache-2.0"
 authors     = ["mcpplibs"]
@@ -216,7 +216,11 @@ sources = [
 cflags = ["-DDISABLE_AARCH64_FMV=1"]
 
 [dependencies]
-openkal-musl = "0.21.1"
+# WITHOUT ITS DEFAULT `image-builtins'. This package supplies the compiler
+# runtime itself (`mcpp:compiler-runtime=compiler-rt' above), and on an ok image
+# (`<arch>-openkal') that feature would bring a second supplier of the same layer
+# --- which a build refuses rather than picks between.
+openkal-musl = { version = "0.22.0", default-features = false, features = ["posix"] }
 
 [build]
 
@@ -472,7 +476,11 @@ sources = [
 # Building these alongside `-lgcc` is not a duplicate-definition hazard. An
 # archive contributes only what is still undefined, so if ours are linked first
 # the archive is never consulted for them.
-[target.'cfg(os = "linux")'.build]
+# THE OK IMAGE (`<arch>-openkal', openkal SPEC clause 12) TAKES THE LINUX
+# SELECTION: the same C library above openkal, the same ELF object format and
+# the same calling convention per architecture; what differs is the loader that
+# binds the image's `kal_*' imports, which this package never names.
+[target.'cfg(any(os = "linux", os = "openkal"))'.build]
 sources = [
   "llvm/compiler-rt/lib/builtins/*.c",
   "!llvm/compiler-rt/lib/builtins/atomic*.c",
@@ -509,7 +517,7 @@ sources = [
 # today, so the exclusion looked like an OS property. It is not. Sorting on the
 # axis the fact actually lives on is what makes a second architecture work
 # without a third copy of the list.
-[target.'cfg(all(os = "linux", not(arch = "x86_64")))'.build]
+[target.'cfg(all(any(os = "linux", os = "openkal"), not(arch = "x86_64")))'.build]
 sources = [
   "!llvm/compiler-rt/lib/builtins/*xf*.c",
   "!llvm/compiler-rt/lib/builtins/*xc3.c",

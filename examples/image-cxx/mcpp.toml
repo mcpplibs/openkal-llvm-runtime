@@ -1,0 +1,17 @@
+# The C++ runtime inside an ok image (target `<arch>-openkal', openkal SPEC
+# clause 12): one image per architecture, run through okrun on Linux, macOS and
+# Windows. `import std', an exception, a thread, a thread-local variable and the
+# containers, above openkal-musl's image form.
+[package]
+name    = "image-cxx"
+version = "0.1.0"
+
+[dependencies]
+openkal-llvm-runtime = { path = "../.." }
+
+[build-dependencies]
+openkal-tools = { git = "https://github.com/mcpplibs/openkal-image.git", branch = "openkal-0.17.0", tools = ["okld", "okrun"] }
+
+[targets.image-cxx]
+kind = "bin"
+main = "src/main.cpp"

@@ -94,8 +94,14 @@ for backend in $(grep -oE '^openkal-[a-z]+ = \{ version' .musl/mcpp.toml | cut -
     manifests+=(".$backend/mcpp.toml")
 done
 
+# The image form's loader library (`openkal-ld', a member of openkal-image).
+fetch openkal-image .openkal-image
+edit .musl/mcpp.toml 's|^openkal-ld = .*$|openkal-ld = { path = "../.openkal-image/ld" }|'
+
 edit .musl/mcpp.toml 's|^openkal = .*$|openkal = { path = "../.spec" }|'
-edit mcpp.toml       's|^openkal-musl = .*$|openkal-musl = { path = "./.musl" }|'
+# The tail is kept: this package asks for the C library without its default
+# features (see the manifest).
+edit mcpp.toml       's|^openkal-musl = \{ version = "[^"]*"(.*)$|openkal-musl = { path = "./.musl"\1|'
 
 # The substitution is asserted rather than assumed. One that matched nothing
 # would leave the manifest naming a version, the resolver would fetch a
