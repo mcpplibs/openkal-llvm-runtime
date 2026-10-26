@@ -621,3 +621,107 @@ jobs:
           grep -q 'caught: 42'      out.log
           grep -q 'unwound: true'   out.log
           grep -q 'import std over openkal: ok' out.log
+
+  # ── AN OK IMAGE (`<arch>-openkal`, openkal SPEC clause 12) ─────────────────
+  #
+  # libc++, libc++abi, libunwind and the builtins inside an image, above
+  # openkal-musl's image form: built once on Linux for both architectures by the
+  # mcpp that has the target, and the same bytes run through okrun on four
+  # systems.
+  images:
+    name: ok images (built once)
+    runs-on: ubuntu-24.04
+    timeout-minutes: 120
+    env:
+      MCPP_SOURCE_REF: ${{ github.event.inputs.mcpp_ref || vars.MCPP_SOURCE_REF || 'release/2026.10.26.2' }}
+      XLINGS_VERSION: v2026.10.26.1
+    defaults:
+      run:
+        shell: bash
+    steps:
+      - uses: actions/checkout@v4
+      - name: Install xlings
+        run: |
+          curl -fsSL --retry 3 --retry-all-errors --retry-delay 2 \
+            https://raw.githubusercontent.com/openxlings/xlings/main/tools/other/quick_install.sh \
+            | bash -s "$XLINGS_VERSION"
+          echo "$HOME/.xlings/subos/current/bin" >> "$GITHUB_PATH"
+      - name: The mcpp that has the target
+        run: |
+          xlings update > /dev/null 2>&1 || true
+          xlings install mcpp -y -g
+          mcpp self config --mirror GLOBAL
+          src="$RUNNER_TEMP/mcpp-src"
+          git clone --quiet --depth 1 --branch "$MCPP_SOURCE_REF" https://github.com/mcpp-community/mcpp.git "$src"
+          rm -f "$src/.xlings.json"
+          ( cd "$src" && mcpp build --release )
+          built=$(find "$src/target" -type f -name mcpp | head -1)
+          [ -n "$built" ] || { echo "::error::mcpp did not build"; exit 1; }
+          echo "$(cd "$(dirname "$built")" && pwd)" >> "$GITHUB_PATH"
+      - name: The stack under test, from the same-named branch
+        run: bash tools/branch-graph.sh '${{ github.head_ref || github.ref_name }}'
+      - name: The images
+        run: |
+          set -euo pipefail
+          for arch in x86_64 aarch64; do
+            mkdir -p "out/$arch"
+            ( cd examples/image-cxx && mcpp build --target "$arch-openkal" )
+            cp examples/image-cxx/target/"$arch"-openkal/*/bin/image-cxx.oke "out/$arch/"
+          done
+          (cd out && sha256sum */* | tee SHA256SUMS)
+      - uses: actions/upload-artifact@v4
+        with: { name: cxx-images, path: out }
+
+  images-run:
+    name: ok images on ${{ matrix.host }}
+    needs: images
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 45
+    env:
+      XLINGS_VERSION: v2026.10.26.1
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - { host: linux-x86_64,   os: ubuntu-24.04,     arch: x86_64 }
+          - { host: linux-aarch64,  os: ubuntu-24.04-arm, arch: aarch64 }
+          - { host: macos-arm64,    os: macos-15,         arch: aarch64 }
+          - { host: windows-x86_64, os: windows-2022,     arch: x86_64 }
+    defaults:
+      run:
+        shell: bash
+    steps:
+      - uses: actions/download-artifact@v4
+        with: { name: cxx-images, path: out }
+      - name: Install xlings (Unix)
+        if: runner.os != 'Windows'
+        run: |
+          curl -fsSL --retry 3 --retry-all-errors --retry-delay 2 \
+            https://raw.githubusercontent.com/openxlings/xlings/main/tools/other/quick_install.sh \
+            | bash -s "$XLINGS_VERSION"
+          echo "$HOME/.xlings/subos/current/bin" >> "$GITHUB_PATH"
+      - name: Install xlings (Windows)
+        if: runner.os == 'Windows'
+        shell: pwsh
+        run: |
+          irm https://d2learn.org/xlings-install.ps1.txt | iex
+          "$env:USERPROFILE\.xlings\subos\current\bin" | Out-File -FilePath $env:GITHUB_PATH -Encoding utf8 -Append
+      - name: okrun, built here
+        run: |
+          xlings install mcpp -y -g
+          mcpp self config --mirror GLOBAL
+          mcpp toolchain install llvm 23.1.3
+          mcpp toolchain default llvm@23.1.3
+          git clone --quiet --depth 1 --branch openkal-0.17.0 https://github.com/mcpplibs/openkal-image.git "$RUNNER_TEMP/oi"
+          ( cd "$RUNNER_TEMP/oi/tools" && mcpp build --release )
+          okrun=$(find "$RUNNER_TEMP/oi/target" -path '*bin*' \( -name okrun -o -name okrun.exe \) -type f | head -1)
+          [ -n "$okrun" ] || { echo "::error::okrun did not build"; exit 1; }
+          echo "OKRUN=$okrun" >> "$GITHUB_ENV"
+      - name: The same bytes
+        run: |
+          set -euo pipefail
+          a='${{ matrix.arch }}'
+          if command -v sha256sum > /dev/null; then (cd out && sha256sum -c SHA256SUMS)
+          else (cd out && shasum -a 256 -c SHA256SUMS); fi
+          "$OKRUN" "out/$a/image-cxx.oke" | tr -d '\r' | tee run.log
+          grep -q -- '-- failures: 0 --' run.log || { echo "::error::image-cxx"; exit 1; }
