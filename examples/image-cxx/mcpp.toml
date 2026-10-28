@@ -10,7 +10,7 @@ version = "0.1.0"
 openkal-llvm-runtime = { path = "../.." }
 
 [build-dependencies]
-openkal-tools = { git = "https://github.com/mcpplibs/openkal-image.git", branch = "openkal-0.17.0", tools = ["okld", "okrun"] }
+openkal-tools = { version = "0.1.3", tools = ["okld", "okrun"] }
 
 [targets.image-cxx]
 kind = "bin"
