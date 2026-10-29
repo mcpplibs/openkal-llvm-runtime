@@ -1,7 +1,7 @@
 [package]
 namespace   = "mcpplibs"
 name        = "openkal-llvm-runtime"
-version     = "0.16.8"
+version     = "0.16.9"
 description = "LLVM's C++ runtime libraries — libc++, libc++abi and libunwind — configured for openkal-musl rather than for a host C library."
 license     = "Apache-2.0"
 authors     = ["mcpplibs"]
@@ -220,7 +220,7 @@ cflags = ["-DDISABLE_AARCH64_FMV=1"]
 # runtime itself (`mcpp:compiler-runtime=compiler-rt' above), and on an ok image
 # (`<arch>-openkal') that feature would bring a second supplier of the same layer
 # --- which a build refuses rather than picks between.
-openkal-musl = { version = "0.22.8", default-features = false, features = ["posix"] }
+openkal-musl = { version = "0.22.9", default-features = false, features = ["posix"] }
 
 [build]
 
@@ -522,6 +522,18 @@ sources = [
   "!llvm/compiler-rt/lib/builtins/*xf*.c",
   "!llvm/compiler-rt/lib/builtins/*xc3.c",
 ]
+
+[target.'cfg(os = "openkal")'.build]
+# WHICH TARGET THIS IS, FOR THE ONE FILE THAT MUST KNOW IT IS AN OK IMAGE.
+#
+# An ok image's triple is `<arch>-unknown-none-elf`: no `__linux__`, no
+# `__APPLE__`, nothing a source can read the target off. `cxa_thread_atexit.cpp`
+# exports `__cxa_thread_atexit` on the targets where no other runtime does, and
+# without this define the ok image was not one of them: every image holding a
+# `thread_local` with a destructor was refused by `okld check` for the undefined
+# symbol (measured building clangd as an ok image, 2026-10-29).
+cflags   = ["-DOPENKAL_TARGET_IMAGE=1"]
+cxxflags = ["-DOPENKAL_TARGET_IMAGE=1"]
 
 [target.'cfg(windows)'.build]
 # WHICH TARGET THIS IS, STATED HERE RATHER THAN READ OFF `_WIN32`.
