@@ -9,6 +9,8 @@ void check(bool held, std::string_view what) {
     if (!held) ++failures;
 }
 thread_local int tl = 7;
+std::atomic<int> tls_dtor_ran{0};
+struct TlsProbe { int v; ~TlsProbe() { tls_dtor_ran.store(v); } };
 }
 
 int main(int argc, char** argv) {
@@ -23,6 +25,12 @@ int main(int argc, char** argv) {
     std::thread t([&] { seen = tl; tl = 99; });
     t.join();
     check(seen == 7 && tl == 7, "a thread has its own thread-local variable");
+
+    // A thread_local with a destructor needs `__cxa_thread_atexit`, which the
+    // image's runtime provides; the image would not link without it.
+    std::thread d([] { thread_local TlsProbe p{7}; (void)p; });
+    d.join();
+    check(tls_dtor_ran.load() == 7, "a thread_local's destructor runs when its thread ends");
 
     std::map<std::string, int> m{{"a", 1}, {"b", 2}};
     std::vector<int> v(100);

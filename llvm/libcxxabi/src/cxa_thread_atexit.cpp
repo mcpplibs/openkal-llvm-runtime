@@ -179,14 +179,19 @@ namespace {
 //
 // THE FALLBACK BELOW WAS ALREADY COMPLETE; only the export was missing. What
 // was NOT complete is where it kept its list --- see `run_dtors` above.
+//
+// THE OK IMAGE IS THE FOURTH SUCH TARGET. Its triple names no operating system,
+// so the guard reads `OPENKAL_TARGET_IMAGE`, which `mcpp.toml` states for
+// `cfg(os = "openkal")` as it states `OPENKAL_TARGET_WINDOWS` for PE.
 #if defined(__linux__) || defined(__Fuchsia__) \
-    || defined(OPENKAL_TARGET_WINDOWS) || defined(__APPLE__)
+    || defined(OPENKAL_TARGET_WINDOWS) || defined(OPENKAL_TARGET_IMAGE) \
+    || defined(__APPLE__)
 extern "C" {
 
   _LIBCXXABI_FUNC_VIS int __cxa_thread_atexit(Dtor dtor, void* obj, void* dso_symbol) throw() {
 #ifdef HAVE___CXA_THREAD_ATEXIT_IMPL
     return __cxa_thread_atexit_impl(dtor, obj, dso_symbol);
-#elif defined(__APPLE__)
+#elif defined(__APPLE__) || defined(OPENKAL_TARGET_IMAGE)
     // NO WEAK PROBE ON MACH-O, AND THE REASON IS THE OBJECT FORMAT.
     //
     // The `else` branch below declares `__cxa_thread_atexit_impl` weak and
@@ -198,7 +203,10 @@ extern "C" {
     //     ld64.lld: error: undefined symbol: __cxa_thread_atexit_impl
     //
     // The test is also pointless here: what would define that symbol is
-    // libSystem, and libSystem is what this stack replaces.
+    // libSystem, and libSystem is what this stack replaces. An ok image takes
+    // the same branch: nothing beneath it defines the symbol either, and an
+    // image may import nothing but `kal_*`, which an unresolved weak reference
+    // would put in question.
     (void)dso_symbol;
     return register_dtor(dtor, obj);
 #else
@@ -229,5 +237,5 @@ extern "C" {
 #endif
 
 } // extern "C"
-#endif // defined(__linux__) || defined(__Fuchsia__)
+#endif // the targets that export __cxa_thread_atexit
 } // namespace __cxxabiv1
