@@ -395,7 +395,7 @@ jobs:
   run-on-macos:
     name: the artefact built on Linux runs on macOS
     needs: runtime
-    runs-on: macos-14
+    runs-on: macos-15
     timeout-minutes: 10
     steps:
       - uses: actions/download-artifact@v4
@@ -479,7 +479,7 @@ jobs:
       fail-fast: false
       matrix:
         include:
-          - { host: macOS,   runner: macos-14,     native: aarch64-macos      }
+          - { host: macOS,   runner: macos-15,     native: aarch64-macos      }
           - { host: Windows, runner: windows-2022, native: x86_64-windows-gnu }
     defaults:
       run:
