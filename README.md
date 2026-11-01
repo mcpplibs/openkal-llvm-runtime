@@ -6,8 +6,12 @@ C library.
 
 ```toml
 [dependencies]
-openkal-llvm-runtime = "0.16.15"
+openkal-llvm-runtime = "0.17.0"
 ```
+
+> **Engine floor (mcpp 2026.11.2.1):** 0.17.0 is built over openkal-musl 0.26.0,
+> which embeds its allocator through a dependency edge's `embed` and states that
+> floor itself.
 
 > **Engine floor (mcpp 2026.9.20.1):** this version of this package pins
 > `openkal-musl 0.19.0` and inherits its `[c-abi]` declaration. The engine
@@ -234,3 +238,33 @@ package supplies the compiler runtime itself and a build has one.
 `examples/image-cxx` (an exception, a thread with its own thread-local
 variable, the containers, formatting) is built once on Linux for both
 architectures and run through okrun on four systems in CI.
+
+## Over openkal-musl 0.26.0, and measured (0.17.0)
+
+The C library beneath is openkal-musl 0.26.0: its allocator is mimalloc,
+embedded, its anonymous memory is `openkal.region`, its string functions use the
+processor's vectors, and a positional read takes no lock. This package depends
+on it without the default features (the compiler runtime is this package's) and
+names the allocator itself (`malloc-mimalloc`), since 0.26.0 selects exactly one.
+
+**What a front end does with the runtime, timed against the system's own**
+(`bench/`, the design's L2). Five workloads in the shapes clangd's warm start
+spends its time in, written with the standard library alone: an option table
+searched by prefix for every argument of 481 command lines (as OptTable parses a
+compile command), a map from path strings filled, searched and emptied (as
+StringMap), an open-addressing map from pointers (as DenseMap), variable-width
+fields written and read back (as a module's bitstream), and posting lists of
+three-letter keys built and intersected (as a symbol index). The same source is
+built with the system's compiler and C++ library, above this runtime, and as an
+ok image; `tools/bench-compare.sh` divides, and continuous integration gates at
+1.15 times the system's time. Measured on Linux x86_64 while it was written,
+the image against the system's libstdc++ and glibc:
+
+| workload | system | image | ratio |
+|---|---|---|---|
+| options (per command line) | 3991 ns | 3612 ns | 0.91 |
+| stringmap (per element) | 107 ns | 73 ns | 0.68 |
+| densemap (per element) | 31 ns | 29 ns | 0.96 |
+| bitstream (per field) | 12.4 ns | 12.4 ns | 1.00 |
+| index (per symbol) | 157 ns | 139 ns | 0.89 |
+

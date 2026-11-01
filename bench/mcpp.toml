@@ -1,0 +1,13 @@
+[package]
+name    = "bench"
+version = "0.1.0"
+
+[dependencies]
+openkal-llvm-runtime = { path = ".." }
+
+[targets.bench]
+kind = "bin"
+main = "src/main.cpp"
+
+[toolchain]
+default = "llvm@22.1.8"
