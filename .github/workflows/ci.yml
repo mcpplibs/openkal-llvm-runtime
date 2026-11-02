@@ -23,8 +23,11 @@ on:
 
 env:
   MCPP_SOURCE_REF: ${{ github.event.inputs.mcpp_ref || vars.MCPP_SOURCE_REF }}
-  MCPP_VERSION: 2026.9.20.1
-  XLINGS_VERSION: v2026.8.17.2
+  # 0.17.0: openkal-musl 0.26.0 embeds its allocator (`embed', mcpp 2026.11.2.1),
+  # whose link requirements are the C library's from mcpp 2026.11.2.2 on: the
+  # Windows program built here links no Win32 library mimalloc's own layer names.
+  MCPP_VERSION: 2026.11.2.2
+  XLINGS_VERSION: v2026.10.26.1
   XLINGS_NON_INTERACTIVE: '1'
 
 jobs:
@@ -125,6 +128,20 @@ jobs:
         run: |
           cd examples/import-std && mcpp run 2>&1 | tee out.log
           grep -q 'import std above openkal: 2 4 7' out.log
+
+      # WHAT A FRONT END DOES WITH THE RUNTIME, TIMED AGAINST THE SYSTEM'S OWN
+      # (0.17.0; the design's L2). bench/ built with this machine's compiler and
+      # C++ library, and above this runtime; five runs of each, alternately,
+      # and the smallest value of each line is compared. tools/bench-compare.sh
+      # states the limit.
+      - name: A front end's workloads against the system's runtime
+        run: |
+          set -euo pipefail
+          ( cd bench && mcpp build --release )
+          this="bench/$(cd bench && find target -type f -name bench | head -1)"
+          c++ -O2 -std=c++20 -o bench-system bench/src/main.cpp
+          for i in 1 2 3 4 5; do ./bench-system > "system-$i.txt"; "$this" > "this-$i.txt"; done
+          bash tools/bench-compare.sh "$(ls system-*.txt | paste -sd, -)" "$(ls this-*.txt | paste -sd, -)"
 
       # WHAT __config_site DECLARES AND WHAT THE PORT BENEATH PROVIDES ARE
       # RECONCILED HERE, RATHER THAN BEING CHECKED ONCE AND ASSUMED AFTERWARDS.
@@ -633,8 +650,7 @@ jobs:
     runs-on: ubuntu-24.04
     timeout-minutes: 120
     env:
-      MCPP_SOURCE_REF: ${{ github.event.inputs.mcpp_ref || vars.MCPP_SOURCE_REF || 'release/2026.10.26.2' }}
-      XLINGS_VERSION: v2026.10.26.1
+      MCPP_SOURCE_REF: ${{ github.event.inputs.mcpp_ref || vars.MCPP_SOURCE_REF }}
     defaults:
       run:
         shell: bash
@@ -649,6 +665,12 @@ jobs:
       - name: The mcpp that has the target
         run: |
           xlings update > /dev/null 2>&1 || true
+          if [ -z "${MCPP_SOURCE_REF:-}" ]; then
+            xlings install "mcpp@$MCPP_VERSION" -y -g
+            mcpp self config --mirror GLOBAL
+            mcpp --version
+            exit 0
+          fi
           xlings install mcpp -y -g
           mcpp self config --mirror GLOBAL
           src="$RUNNER_TEMP/mcpp-src"
@@ -667,6 +689,9 @@ jobs:
             mkdir -p "out/$arch"
             ( cd examples/image-cxx && mcpp build --target "$arch-openkal" )
             cp examples/image-cxx/target/"$arch"-openkal/*/bin/image-cxx.oke "out/$arch/"
+            ( cd bench && mcpp build --release --target "$arch-openkal" )
+            cp bench/target/"$arch"-openkal/*/bin/bench.oke "out/$arch/"
+            cp bench/src/main.cpp out/bench.cpp
           done
           (cd out && sha256sum */* | tee SHA256SUMS)
       - uses: actions/upload-artifact@v4
@@ -691,6 +716,7 @@ jobs:
       run:
         shell: bash
     steps:
+      - uses: actions/checkout@v4
       - uses: actions/download-artifact@v4
         with: { name: cxx-images, path: out }
       - name: Install xlings (Unix)
@@ -712,7 +738,13 @@ jobs:
           mcpp self config --mirror GLOBAL
           mcpp toolchain install llvm 23.1.3
           mcpp toolchain default llvm@23.1.3
-          git clone --quiet --depth 1 --branch openkal-0.17.0 https://github.com/mcpplibs/openkal-image.git "$RUNNER_TEMP/oi"
+          # THE SAME-NAMED BRANCH, as the images were built against.
+          branch='${{ github.head_ref || github.ref_name }}'
+          git clone --quiet https://github.com/mcpplibs/openkal-image.git "$RUNNER_TEMP/oi"
+          if git -C "$RUNNER_TEMP/oi" rev-parse --verify --quiet "origin/$branch" > /dev/null; then
+            git -C "$RUNNER_TEMP/oi" checkout --quiet "origin/$branch"
+          fi
+          git -C "$RUNNER_TEMP/oi" log --oneline -1
           ( cd "$RUNNER_TEMP/oi/tools" && mcpp build --release )
           okrun=$(find "$RUNNER_TEMP/oi/target" -path '*bin*' \( -name okrun -o -name okrun.exe \) -type f | head -1)
           [ -n "$okrun" ] || { echo "::error::okrun did not build"; exit 1; }
@@ -725,3 +757,21 @@ jobs:
           else (cd out && shasum -a 256 -c SHA256SUMS); fi
           "$OKRUN" "out/$a/image-cxx.oke" | tr -d '\r' | tee run.log
           grep -q -- '-- failures: 0 --' run.log || { echo "::error::image-cxx"; exit 1; }
+
+      # A FRONT END'S WORKLOADS IN THE IMAGE AGAINST THE SYSTEM'S RUNTIME, on
+      # the system the image runs on (the design's L2: at most 1.15 times as
+      # long). Windows has no system C++ compiler on this runner, and reports
+      # the image's numbers.
+      - name: The image's workloads against the system's runtime
+        run: |
+          set -euo pipefail
+          a='${{ matrix.arch }}'
+          if [ '${{ runner.os }}' = Windows ]; then "$OKRUN" "out/$a/bench.oke" | tr -d '\r'; exit 0; fi
+          c++ -O2 -std=c++20 -o bench-system out/bench.cpp
+          # Five of each, taken alternately: what disturbs a shared runner
+          # lengthens the runs of one period, not those of one side.
+          for i in 1 2 3 4 5; do
+            ./bench-system > "system-$i.txt"
+            "$OKRUN" "out/$a/bench.oke" | tr -d '\r' > "image-$i.txt"
+          done
+          bash tools/bench-compare.sh "$(ls system-*.txt | paste -sd, -)" "$(ls image-*.txt | paste -sd, -)"

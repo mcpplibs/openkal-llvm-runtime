@@ -269,6 +269,18 @@ Linux 宿主交叉),前两个**实跑** `failures: 0`(Windows 经 wine)。macOS 
 `thread_local`,于是 macOS 那一侧的两个缺口都不在场——判据的价值不在于它今天绿,而在于
 它让一类从来没有对象的检查有了对象。
 
+### 第四层:变量的块先于读它的析构被释放(0.17.0,`emutls.c`)
+
+openkal-musl 0.26 把分配器换成 mimalloc 之后,PE 上第二条判据又红了:析构运行了,读到的成员
+却是垃圾。`thread_local TlsProbe p` 本身是 emutls 的变量,它的块挂在 emutls 的 key 后面;运行
+析构的 key(上面的 fallback)在第一次注册析构时才创建,晚于 emutls 的 key。musl 按 key 的顺序
+调用析构,于是 emutls 先释放了块,析构读的是已释放的内存。mallocng 不动已释放块的字节,此前读到
+的值碰巧仍然正确;mimalloc 把空闲链表写进已释放的块。
+
+修法与 openkal-musl 为 ok 映像自带的 emutls 相同:`EMUTLS_SKIP_DESTRUCTOR_ROUNDS` 在 openkal 上取
+`PTHREAD_DESTRUCTOR_ITERATIONS - 1`,块在 musl 的最后一轮才释放(上游只为 Bionic 推迟一轮)。
+Mach-O 同样经 emutls,同一处修正覆盖它。
+
 ## 一个名字,不是五个
 
 五处补丁全部守卫在 **`OPENKAL`** 上,`cflags` 和 `cxxflags` 各给一次

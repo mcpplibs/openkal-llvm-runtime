@@ -9,9 +9,10 @@ version = "0.1.0"
 [dependencies]
 openkal-llvm-runtime = { path = "../.." }
 
-[build-dependencies]
-openkal-tools = { version = "0.1.4", tools = ["okld", "okrun"] }
-
 [targets.image-cxx]
 kind = "bin"
 main = "src/main.cpp"
+
+# The platform (openkal-platform, mcpp 2026.10.27.1+) states the link, the
+# seal and the tools; the three layers are this package and the C library
+# beneath it, here by path.

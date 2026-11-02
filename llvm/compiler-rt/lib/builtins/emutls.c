@@ -22,6 +22,18 @@
 // after the final malloc/free call to free its thread-specific data (see
 // https://reviews.llvm.org/D46978#1107507).
 #define EMUTLS_SKIP_DESTRUCTOR_ROUNDS 1
+/* ─── openkal ─── BEGIN
+ * A thread's variables outlive the destructors that read them. The key that
+ * runs `thread_local' destructors (libc++abi's `__cxa_thread_atexit' fallback)
+ * is created after this file's, and musl runs key destructors in the order of
+ * the keys, so the blocks were freed first and a destructor read freed memory:
+ * garbage under mimalloc, which writes its free list into a freed block
+ * (openkal-musl 0.26; examples/cxx on PE). The blocks are freed in musl's last
+ * round, as openkal-musl's own emutls for an ok image frees them. */
+#elif defined(OPENKAL)
+#include <limits.h>
+#define EMUTLS_SKIP_DESTRUCTOR_ROUNDS (PTHREAD_DESTRUCTOR_ITERATIONS - 1)
+/* ─── openkal ─── END */
 #else
 #define EMUTLS_SKIP_DESTRUCTOR_ROUNDS 0
 #endif
