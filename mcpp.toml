@@ -221,11 +221,19 @@ cflags = ["-DDISABLE_AARCH64_FMV=1"]
 # (`<arch>-openkal') that feature would bring a second supplier of the same layer
 # --- which a build refuses rather than picks between.
 #
-# AND WITH ITS ALLOCATOR NAMED (0.17.0). openkal-musl 0.26.0 has two
+# AND WITH ITS ALLOCATOR NAMED BY TARGET (0.17.0). openkal-musl 0.26.0 has two
 # allocators and exactly one is selected; `malloc-mimalloc' is a default
-# feature, so an edge without the defaults names it, or the C library stops
-# the build and says so.
+# feature, so an edge without the defaults names one, or the C library stops
+# the build and says so. mimalloc wherever memory is an environment's regions
+# or its allocator's chunks; musl's own on bare metal, where `kal_alloc' is the
+# fixed heap the firmware's build sized and mimalloc's arenas do not fit in it
+# (measured on OpenSBI: every request for an arena refused, ENOMEM). A
+# target's edge replaces a general one, so each states every feature.
+[target.'cfg(not(os = "none"))'.dependencies]
 openkal-musl = { version = "0.26.0", default-features = false, features = ["posix", "malloc-mimalloc"] }
+
+[target.'cfg(os = "none")'.dependencies]
+openkal-musl = { version = "0.26.0", default-features = false, features = ["posix", "malloc-mallocng"] }
 
 [build]
 
