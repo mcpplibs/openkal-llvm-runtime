@@ -11,7 +11,9 @@ openkal-llvm-runtime = "0.17.0"
 
 > **Engine floor (mcpp 2026.11.2.1):** 0.17.0 is built over openkal-musl 0.26.0,
 > which embeds its allocator through a dependency edge's `embed` and states that
-> floor itself.
+> floor itself. A Windows program needs mcpp 2026.11.2.2, from which an embedded
+> dependency's link libraries are its embedder's; under 2026.11.2.1 its link
+> names the Win32 libraries of mimalloc's own operating-system layer.
 
 > **Engine floor (mcpp 2026.9.20.1):** this version of this package pins
 > `openkal-musl 0.19.0` and inherits its `[c-abi]` declaration. The engine
@@ -246,6 +248,12 @@ embedded, its anonymous memory is `openkal.region`, its string functions use the
 processor's vectors, and a positional read takes no lock. This package depends
 on it without the default features (the compiler runtime is this package's) and
 names the allocator itself (`malloc-mimalloc`), since 0.26.0 selects exactly one.
+
+**A `thread_local`'s destructor reads its variable on PE and Mach-O.** There a
+thread's variables are compiler-rt's emutls blocks, freed by a key created before
+the key that runs `thread_local` destructors, and musl runs key destructors in
+key order: the destructor read freed memory, which mimalloc overwrites. emutls
+now frees the blocks in musl's last round (`llvm/PATCHES.md`, 第七处 第四层).
 
 **What a front end does with the runtime, timed against the system's own**
 (`bench/`, the design's L2). Five workloads in the shapes clangd's warm start
