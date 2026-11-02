@@ -23,8 +23,10 @@ on:
 
 env:
   MCPP_SOURCE_REF: ${{ github.event.inputs.mcpp_ref || vars.MCPP_SOURCE_REF }}
-  # 0.17.0: openkal-musl 0.26.0 embeds its allocator (`embed', mcpp 2026.11.2.1).
-  MCPP_VERSION: 2026.11.2.1
+  # 0.17.0: openkal-musl 0.26.0 embeds its allocator (`embed', mcpp 2026.11.2.1),
+  # whose link requirements are the C library's from mcpp 2026.11.2.2 on: the
+  # Windows program built here links no Win32 library mimalloc's own layer names.
+  MCPP_VERSION: 2026.11.2.2
   XLINGS_VERSION: v2026.10.26.1
   XLINGS_NON_INTERACTIVE: '1'
 
@@ -129,8 +131,8 @@ jobs:
 
       # WHAT A FRONT END DOES WITH THE RUNTIME, TIMED AGAINST THE SYSTEM'S OWN
       # (0.17.0; the design's L2). bench/ built with this machine's compiler and
-      # C++ library, and above this runtime; three runs of each, alternately,
-      # and the smaller value of each line is compared. tools/bench-compare.sh
+      # C++ library, and above this runtime; five runs of each, alternately,
+      # and the smallest value of each line is compared. tools/bench-compare.sh
       # states the limit.
       - name: A front end's workloads against the system's runtime
         run: |
@@ -138,8 +140,8 @@ jobs:
           ( cd bench && mcpp build --release )
           this="bench/$(cd bench && find target -type f -name bench | head -1)"
           c++ -O2 -std=c++20 -o bench-system bench/src/main.cpp
-          for i in 1 2 3; do ./bench-system > "system-$i.txt"; "$this" > "this-$i.txt"; done
-          bash tools/bench-compare.sh system-1.txt,system-2.txt,system-3.txt this-1.txt,this-2.txt,this-3.txt
+          for i in 1 2 3 4 5; do ./bench-system > "system-$i.txt"; "$this" > "this-$i.txt"; done
+          bash tools/bench-compare.sh "$(ls system-*.txt | paste -sd, -)" "$(ls this-*.txt | paste -sd, -)"
 
       # WHAT __config_site DECLARES AND WHAT THE PORT BENEATH PROVIDES ARE
       # RECONCILED HERE, RATHER THAN BEING CHECKED ONCE AND ASSUMED AFTERWARDS.
@@ -764,8 +766,12 @@ jobs:
         run: |
           set -euo pipefail
           a='${{ matrix.arch }}'
-          for i in 1 2 3; do "$OKRUN" "out/$a/bench.oke" | tr -d '\r' > "image-$i.txt"; done
-          if [ '${{ runner.os }}' = Windows ]; then cat image-1.txt; exit 0; fi
+          if [ '${{ runner.os }}' = Windows ]; then "$OKRUN" "out/$a/bench.oke" | tr -d '\r'; exit 0; fi
           c++ -O2 -std=c++20 -o bench-system out/bench.cpp
-          for i in 1 2 3; do ./bench-system > "system-$i.txt"; done
-          bash tools/bench-compare.sh system-1.txt,system-2.txt,system-3.txt image-1.txt,image-2.txt,image-3.txt
+          # Five of each, taken alternately: what disturbs a shared runner
+          # lengthens the runs of one period, not those of one side.
+          for i in 1 2 3 4 5; do
+            ./bench-system > "system-$i.txt"
+            "$OKRUN" "out/$a/bench.oke" | tr -d '\r' > "image-$i.txt"
+          done
+          bash tools/bench-compare.sh "$(ls system-*.txt | paste -sd, -)" "$(ls image-*.txt | paste -sd, -)"
