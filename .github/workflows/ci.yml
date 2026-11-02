@@ -130,17 +130,24 @@ jobs:
           grep -q 'import std above openkal: 2 4 7' out.log
 
       # WHAT A FRONT END DOES WITH THE RUNTIME, TIMED AGAINST THE SYSTEM'S OWN
-      # (0.17.0; the design's L2). bench/ built with this machine's compiler and
-      # C++ library, and above this runtime; five runs of each, alternately,
-      # and the smallest value of each line is compared. tools/bench-compare.sh
-      # states the limit.
+      # (0.17.0; the design's L2). bench/ built above this runtime, and with
+      # this machine's C++ library by the same compiler family, Clang: the
+      # runtime is what is compared, so the compiler is held. On Linux arm64 the
+      # same source over libstdc++ took 220 ns per symbol (index) built by GCC
+      # 13 and 261 built by Clang, a difference no runtime makes; the GCC build
+      # is compared as well and reported. Five runs of each, alternately, and
+      # the smallest value of each line; tools/bench-compare.sh states the limit.
       - name: A front end's workloads against the system's runtime
         run: |
           set -euo pipefail
           ( cd bench && mcpp build --release )
           this="bench/$(cd bench && find target -type f -name bench | head -1)"
-          c++ -O2 -std=c++20 -o bench-system bench/src/main.cpp
-          for i in 1 2 3 4 5; do ./bench-system > "system-$i.txt"; "$this" > "this-$i.txt"; done
+          clang++ -O2 -std=c++20 -o bench-system bench/src/main.cpp
+          c++ -O2 -std=c++20 -o bench-system-gcc bench/src/main.cpp
+          for i in 1 2 3 4 5; do ./bench-system > "system-$i.txt"; ./bench-system-gcc > "gcc-$i.txt"; "$this" > "this-$i.txt"; done
+          echo "-- against the system's library built by its own compiler (reported) --"
+          bash tools/bench-compare.sh "$(ls gcc-*.txt | paste -sd, -)" "$(ls this-*.txt | paste -sd, -)" || true
+          echo "-- against the system's library built by Clang (the gate) --"
           bash tools/bench-compare.sh "$(ls system-*.txt | paste -sd, -)" "$(ls this-*.txt | paste -sd, -)"
 
       # WHAT __config_site DECLARES AND WHAT THE PORT BENEATH PROVIDES ARE
@@ -767,11 +774,19 @@ jobs:
           set -euo pipefail
           a='${{ matrix.arch }}'
           if [ '${{ runner.os }}' = Windows ]; then "$OKRUN" "out/$a/bench.oke" | tr -d '\r'; exit 0; fi
-          c++ -O2 -std=c++20 -o bench-system out/bench.cpp
+          # The image is built by Clang; the system's library is built by
+          # Clang too, so the runtime is what differs (see the step of the same
+          # name above). The system compiler's own build is reported.
+          clang++ -O2 -std=c++20 -o bench-system out/bench.cpp
+          c++ -O2 -std=c++20 -o bench-system-cc out/bench.cpp
           # Five of each, taken alternately: what disturbs a shared runner
           # lengthens the runs of one period, not those of one side.
           for i in 1 2 3 4 5; do
             ./bench-system > "system-$i.txt"
+            ./bench-system-cc > "cc-$i.txt"
             "$OKRUN" "out/$a/bench.oke" | tr -d '\r' > "image-$i.txt"
           done
+          echo "-- against the system's library built by its own compiler (reported) --"
+          bash tools/bench-compare.sh "$(ls cc-*.txt | paste -sd, -)" "$(ls image-*.txt | paste -sd, -)" || true
+          echo "-- against the system's library built by Clang (the gate) --"
           bash tools/bench-compare.sh "$(ls system-*.txt | paste -sd, -)" "$(ls image-*.txt | paste -sd, -)"
