@@ -268,10 +268,14 @@ compile command), a map from path strings filled, searched and emptied (as
 StringMap), an open-addressing map from pointers (as DenseMap), variable-width
 fields written and read back (as a module's bitstream), and posting lists of
 three-letter keys built and intersected (as a symbol index). The same source is
-built with the system's compiler and C++ library, above this runtime, and as an
-ok image; `tools/bench-compare.sh` divides, and continuous integration gates at
-1.15 times the system's time. Measured on Linux x86_64 while it was written,
-the image against the system's libstdc++ and glibc:
+built with the system's C++ library, above this runtime, and as an ok image;
+`tools/bench-compare.sh` divides, and continuous integration gates at 1.15 times
+the system's time. The system's library is built by Clang, as the runtime is,
+so that what differs is the runtime (0.17.1): on Linux arm64 the index workload
+over libstdc++ took 220 ns per symbol built by GCC 13 and 261 built by Clang,
+and the image 237; the build by the system's own compiler is reported beside
+the gate. Measured on Linux x86_64 while it was written, the image against the
+system's libstdc++ and glibc:
 
 | workload | system | image | ratio |
 |---|---|---|---|

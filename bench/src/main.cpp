@@ -1,10 +1,11 @@
 // What a compiler front end does with the C++ runtime, timed (0.17.0; the layer
 // the design calls L2).
 //
-// ONE SOURCE, BUILT THREE WAYS: with the build machine's own compiler and C++
-// library (`c++ -O2 -std=c++20 bench/src/main.cpp'), above this runtime on the
-// machine's openkal implementation (`mcpp build --release' here), and as an ok
-// image run by okrun. tools/bench-compare.sh divides two reports line by line.
+// ONE SOURCE, BUILT THREE WAYS: with the build machine's C++ library, by Clang
+// as the runtime is (`clang++ -O2 -std=c++20 bench/src/main.cpp'; the machine's
+// own compiler's build is reported), above this runtime on the machine's
+// openkal implementation (`mcpp build --release' here), and as an ok image run
+// by okrun. tools/bench-compare.sh divides two reports line by line.
 //
 // THE FIVE WORKLOADS are the shapes clangd's warm start spends its time in
 // (mcpp's design of 2026-11-02, part 3, §2.3), written with the standard
