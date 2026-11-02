@@ -6,7 +6,7 @@ C library.
 
 ```toml
 [dependencies]
-openkal-llvm-runtime = "0.17.1"
+openkal-llvm-runtime = "0.18.0"
 ```
 
 > **Engine floor (mcpp 2026.11.2.1):** 0.17.0 is built over openkal-musl 0.26.0,
@@ -240,6 +240,19 @@ package supplies the compiler runtime itself and a build has one.
 `examples/image-cxx` (an exception, a thread with its own thread-local
 variable, the containers, formatting) is built once on Linux for both
 architectures and run through okrun on four systems in CI.
+
+## Over openkal-musl 0.27.0 (0.18.0)
+
+openkal-musl 0.27.0, the C library openkal-platform 0.23.0 names: `/dev/null` on every system,
+and the system's null device at a started program's position (openkal 0.22); `realpath` answered
+by the environment for the whole name, and an image's `dlopen` at its base (openkal 0.23); its
+image loader is openkal-image 0.4.0's; a program that gives on the directories it holds, with their
+rights; and a snapshot of an image's initialisers, which runs the C++ run-time's own --- the
+standard streams, the locale --- once in a boot (openkal-platform 0.23.0's CI starts from one a
+program whose initialisers build strings, maps and vectors and whose `main` then throws, starts
+threads and destroys their thread-local objects). On PE under clang the C library requires the compiler runtime
+this package builds (`mcpp:compiler-runtime=compiler-rt`), which a graph holding this package
+supplies. Nothing else changes.
 
 ## Over openkal-musl 0.26.1 (0.17.1)
 
