@@ -6,7 +6,7 @@ C library.
 
 ```toml
 [dependencies]
-openkal-llvm-runtime = "0.17.0"
+openkal-llvm-runtime = "0.17.1"
 ```
 
 > **Engine floor (mcpp 2026.11.2.1):** 0.17.0 is built over openkal-musl 0.26.0,
@@ -240,6 +240,11 @@ package supplies the compiler runtime itself and a build has one.
 `examples/image-cxx` (an exception, a thread with its own thread-local
 variable, the containers, formatting) is built once on Linux for both
 architectures and run through okrun on four systems in CI.
+
+## Over openkal-musl 0.26.1 (0.17.1)
+
+openkal-musl 0.26.1, whose image loader is openkal-image 0.3.1's, the version group openkal-platform
+0.21.1 names; nothing else changes.
 
 ## Over openkal-musl 0.26.0, and measured (0.17.0)
 
