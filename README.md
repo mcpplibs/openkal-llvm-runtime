@@ -6,7 +6,7 @@ C library.
 
 ```toml
 [dependencies]
-openkal-llvm-runtime = "0.18.0"
+openkal-llvm-runtime = "0.18.1"
 ```
 
 > **Engine floor (mcpp 2026.11.2.1):** 0.17.0 is built over openkal-musl 0.26.0,
@@ -240,6 +240,18 @@ package supplies the compiler runtime itself and a build has one.
 `examples/image-cxx` (an exception, a thread with its own thread-local
 variable, the containers, formatting) is built once on Linux for both
 architectures and run through okrun on four systems in CI.
+
+## Built with branch protection (0.18.1)
+
+openkal-platform 0.23.0 compiles every unit on aarch64 with `-mbranch-protection=pac-ret+bti`.
+compiler-rt's outline atomics (`llvm-generated/outline-atomics`, one file for each instantiation
+of `aarch64/lse.S`) include compiler-rt's `assembly.h` by their own path, and `lse.S` then asks
+for `"assembly.h"`, which this package's include path answers with libunwind's header of the same
+name: it redefined `GNU_PROPERTY` as a number, and the property note compiler-rt writes after the
+functions failed to assemble (`3(0xc0000000, 1 | 2 | 0)`: "unexpected token at start of
+statement"). Without branch protection the note is empty and the redefinition went unseen. Each
+file now states libunwind's guard before it includes `lse.S`, and the objects carry the note an
+image's loader reads before it enforces the marks (`aarch64 feature: BTI, PAC`).
 
 ## Over openkal-musl 0.27.0 (0.18.0)
 

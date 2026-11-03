@@ -19,4 +19,12 @@
 // flag is what would have to be repeated by anything else that ever includes
 // this directory.
 #include "../../llvm/compiler-rt/lib/builtins/assembly.h"
+// AND libunwind's `assembly.h` NOT AFTER IT (0.18.1). `lse.S`'s own
+// `#include "assembly.h"` is looked for on this package's include path, where
+// libunwind's header of the same name is found; included after compiler-rt's,
+// it redefined `GNU_PROPERTY`, and with branch protection (openkal-platform
+// 0.23.0: `-mbranch-protection=pac-ret+bti`) the property note compiler-rt
+// writes after the functions read `3(0xc0000000, 1 | 2 | 0)`: "unexpected token
+// at start of statement". Its guard stated, that include adds nothing.
+#define UNWIND_ASSEMBLY_H
 #include "../../llvm/compiler-rt/lib/builtins/aarch64/lse.S"
