@@ -1,7 +1,7 @@
 [package]
 namespace   = "mcpplibs"
 name        = "openkal-llvm-runtime"
-version     = "0.18.2"
+version     = "0.18.3"
 description = "LLVM's C++ runtime libraries — libc++, libc++abi and libunwind — configured for openkal-musl rather than for a host C library."
 license     = "Apache-2.0"
 authors     = ["mcpplibs"]
@@ -230,10 +230,10 @@ cflags = ["-DDISABLE_AARCH64_FMV=1"]
 # (measured on OpenSBI: every request for an arena refused, ENOMEM). A
 # target's edge replaces a general one, so each states every feature.
 [target.'cfg(not(os = "none"))'.dependencies]
-openkal-musl = { version = "0.27.1", default-features = false, features = ["posix", "malloc-mimalloc"] }
+openkal-musl = { version = "0.27.2", default-features = false, features = ["posix", "malloc-mimalloc"] }
 
 [target.'cfg(os = "none")'.dependencies]
-openkal-musl = { version = "0.27.1", default-features = false, features = ["posix", "malloc-mallocng"] }
+openkal-musl = { version = "0.27.2", default-features = false, features = ["posix", "malloc-mallocng"] }
 
 [build]
 
