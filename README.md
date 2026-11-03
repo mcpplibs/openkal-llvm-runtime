@@ -6,7 +6,7 @@ C library.
 
 ```toml
 [dependencies]
-openkal-llvm-runtime = "0.18.1"
+openkal-llvm-runtime = "0.18.2"
 ```
 
 > **Engine floor (mcpp 2026.11.2.1):** 0.17.0 is built over openkal-musl 0.26.0,
@@ -240,6 +240,11 @@ package supplies the compiler runtime itself and a build has one.
 `examples/image-cxx` (an exception, a thread with its own thread-local
 variable, the containers, formatting) is built once on Linux for both
 architectures and run through okrun on four systems in CI.
+
+## Over openkal-musl 0.27.1 (0.18.2)
+
+openkal-musl 0.27.1, over openkal-macos 0.21.3: a hosted program on macOS is given the directories
+it was granted. Nothing in this package changes.
 
 ## Built with branch protection (0.18.1)
 
