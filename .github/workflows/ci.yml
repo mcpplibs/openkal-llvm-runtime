@@ -26,7 +26,9 @@ env:
   # 0.17.0: openkal-musl 0.26.0 embeds its allocator (`embed', mcpp 2026.11.2.1),
   # whose link requirements are the C library's from mcpp 2026.11.2.2 on: the
   # Windows program built here links no Win32 library mimalloc's own layer names.
-  MCPP_VERSION: 2026.11.2.2
+  # The image matrix uses the corrected platform group selected by this engine.
+  # MCPP_SOURCE_REF supplies its candidate until the release is installable.
+  MCPP_VERSION: 2026.11.3.1
   XLINGS_VERSION: v2026.10.26.1
   XLINGS_NON_INTERACTIVE: '1'
 
