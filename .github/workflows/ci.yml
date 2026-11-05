@@ -754,6 +754,7 @@ jobs:
             git -C "$RUNNER_TEMP/oi" checkout --quiet "origin/$branch"
           fi
           git -C "$RUNNER_TEMP/oi" log --oneline -1
+          ( cd "$RUNNER_TEMP/oi" && python .github/scripts/source-group.py "$branch" )
           ( cd "$RUNNER_TEMP/oi/tools" && mcpp build --release )
           okrun=$(find "$RUNNER_TEMP/oi/target" -path '*bin*' \( -name okrun -o -name okrun.exe \) -type f | head -1)
           [ -n "$okrun" ] || { echo "::error::okrun did not build"; exit 1; }
