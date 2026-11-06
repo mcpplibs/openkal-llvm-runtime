@@ -6,7 +6,7 @@ C library.
 
 ```toml
 [dependencies]
-openkal-llvm-runtime = "0.18.4"
+openkal-llvm-runtime = "0.19.0"
 ```
 
 > **Engine floor (mcpp 2026.11.2.1):** 0.17.0 is built over openkal-musl 0.26.0,
@@ -327,3 +327,9 @@ system's libstdc++ and glibc:
 openkal-musl 0.27.3 selects openkal-linux 0.24.1 on Linux and openkal-ld 0.4.3
 for an image. Linux confinement requires Landlock ABI 3 to enforce read-only
 grants against raw file truncation. The runtime implementation is unchanged.
+
+## OpenKal 0.24 dependency group
+
+Runtime 0.19.0 selects openkal-musl 0.28.0 and its matching OpenKal 0.24
+implementations. The C++ runtime surface and allocator feature selection
+remain unchanged.
