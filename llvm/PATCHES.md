@@ -29,10 +29,10 @@ grep -rn "openkal ─── BEGIN" llvm/
 
 ## 已替换
 
- 五处,四个文件,一个判据 —— 每一处都能填进上面那句话。
+ 六处,五个文件,一个判据 —— 每一处都能填进上面那句话。
 
 ```sh
-grep -rn "openkal ─── BEGIN" llvm/    # 10 处标记(含配对的 #else/#endif)
+grep -rn "openkal ─── BEGIN" llvm/    # 12 处标记(含配对的 #else/#endif)
 ```
 
 | 文件 | 上游按什么分派 | 平台面 | openkal 的答案 |
@@ -42,6 +42,21 @@ grep -rn "openkal ─── BEGIN" llvm/    # 10 处标记(含配对的 #else/#e
 | `libunwind/src/RWMutex.hpp` | `_WIN32` | 读写锁 | pthread ⇒ musl ⇒ `kal_task_*` |
 | `libunwind/src/UnwindCursor.hpp` | `_WIN32` | (无) | 整段没被用到,只是被 include |
 | `compiler-rt/…/emutls.c` | `_WIN32` | 互斥 + 对齐分配 | pthread + `posix_memalign` |
+| `libcxx/src/filesystem/path_parser.h` | `_LIBCPP_WIN32API` | 名字的根 | C 库的根：`/` 与 `X:/`（0.19.1） |
+
+### `libcxx/src/filesystem/path_parser.h` 与 `port/include/__filesystem/path.h` — 卷下的名字（0.19.1）
+
+C 库（openkal-musl）在有卷的系统上把文件写作 `D:/...`，并像对待 `/` 一样把 `X:/` 当作根
+（其 `root_length`）。libc++ 只在 `_LIBCPP_WIN32API` 下识别盘符，按 POSIX 规则读 `D:/a` 时它是
+相对名：工作目录的 `is_absolute()` 为假，`absolute`、`canonical`、`relative` 拼出不存在的名字
+（openkal-llvm-runtime#64）。
+
+- `path_parser.h` 的 `consumeRootName` 在 `OPENKAL` 下接受后面紧跟 `/` 的 `X:` 作为根名，正向与
+  反向解析都一样；不带分隔符的 `X:` 仍是普通名字，与 C 库一致。`path_parser.h` 由同目录的
+  `.cpp` 以引号包含，无法遮蔽，所以原地标记。
+- `__filesystem/path.h` 的 `append(Source)` 在 POSIX 分支只看首字符是否为分隔符；覆盖件在
+  `OPENKAL` 或 `__OPENKAL__` 下改用 `path::is_absolute()` 判断，使 `path / "D:/y"` 与
+  `path / path("D:/y")` 结果相同。头文件按本文的约定放在 `port/include/` 覆盖，vendored 树不动。
 
 ### `libcxx/src/atomic.cpp` — `std::atomic` 的等待与唤醒
 
