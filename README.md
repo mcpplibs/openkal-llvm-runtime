@@ -6,7 +6,7 @@ C library.
 
 ```toml
 [dependencies]
-openkal-llvm-runtime = "0.19.0"
+openkal-llvm-runtime = "0.19.1"
 ```
 
 > **Engine floor (mcpp 2026.11.2.1):** 0.17.0 is built over openkal-musl 0.26.0,
@@ -329,6 +329,15 @@ for an image. Linux confinement requires Landlock ABI 3 to enforce read-only
 grants against raw file truncation. The runtime implementation is unchanged.
 
 ## OpenKal 0.24 dependency group
+
+Runtime 0.19.1 reads a name beneath a volume, `X:/...`, as the C library beneath
+does: `X:` is the root name and `/` the root directory, so the working directory on
+a system with volumes is absolute and `absolute`, `canonical` and `relative` keep
+it (openkal-llvm-runtime#64). `X:` without a separator stays an ordinary name.
+Both probes (`examples/cxx`, `examples/image-cxx`) state the decomposition, the
+append and the working-directory results; without the change four of them fail on
+Linux and the working-directory results fail on Windows. The dependency on
+openkal-musl is the compatible range `^0.28.0`.
 
 Runtime 0.19.0 selects openkal-musl 0.28.0 and its matching OpenKal 0.24
 implementations. The C++ runtime surface and allocator feature selection

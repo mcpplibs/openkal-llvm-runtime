@@ -329,6 +329,27 @@ private:
       return Ret;
     if (PosPtr Ret = consumeNetworkRoot(P, End))
       return Ret;
+// ─── openkal ─── BEGIN ────────────────────────────────────────────────────────
+#elif defined(OPENKAL)
+    // openkal: A VOLUME IS A ROOT NAME WHEN A SEPARATOR FOLLOWS IT.
+    //
+    // The C library beneath (openkal-musl) names a file on a system with
+    // volumes `D:/...`, and takes `X:/` as a root exactly as it takes `/`
+    // (its root_length). Read as a POSIX name, `D:/a` was relative, so
+    // `current_path().is_absolute()` was false and `absolute`, `canonical`
+    // and `relative` built names that do not exist (openkal-llvm-runtime#64).
+    // `D:` without a separator stays an ordinary name, as it is to the C
+    // library.
+    if (P < End) {
+      if (End - P >= 3 && isDriveLetter(P[0]) && P[1] == ':' && P[2] == '/')
+        return P + 2;
+    } else if (P != End) {
+      const PosPtr First = Path.data();
+      const PosPtr Last  = Path.data() + Path.size();
+      if (P - 1 == First && P - 1 > End && P[0] == ':' && isDriveLetter(P[-1]) && P + 1 < Last && P[1] == '/')
+        return P - 2;
+    }
+// ─── openkal ─── END ──────────────────────────────────────────────────────────
 #endif
     return nullptr;
   }
