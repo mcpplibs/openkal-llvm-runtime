@@ -32,7 +32,7 @@ grep -rn "openkal ─── BEGIN" llvm/
  六处,五个文件,一个判据 —— 每一处都能填进上面那句话。
 
 ```sh
-grep -rn "openkal ─── BEGIN" llvm/    # 12 处标记(含配对的 #else/#endif)
+grep -rn "openkal ─── BEGIN" llvm/    # 30 处 BEGIN 标记
 ```
 
 | 文件 | 上游按什么分派 | 平台面 | openkal 的答案 |
