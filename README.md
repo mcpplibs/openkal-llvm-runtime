@@ -6,7 +6,7 @@ C library.
 
 ```toml
 [dependencies]
-openkal-llvm-runtime = "0.19.1"
+openkal-llvm-runtime = "0.19.2"
 ```
 
 > **Engine floor (mcpp 2026.11.2.1):** 0.17.0 is built over openkal-musl 0.26.0,
@@ -329,6 +329,18 @@ for an image. Linux confinement requires Landlock ABI 3 to enforce read-only
 grants against raw file truncation. The runtime implementation is unchanged.
 
 ## OpenKal 0.24 dependency group
+
+Runtime 0.19.2 keeps the volume where a name is rebuilt part by part. `X:` is a
+root name only with the separator after it, so `lexically_normal` appended `D:` as
+an ordinary name and the root directory replaced it (`D:/a/./b` became `/a/b`), and
+so did `weakly_canonical`, which ends in it, and `path("D:/a") / "/b"`. On Windows a
+program over the hosted arrangement then named every file beneath no volume: a
+launcher could not start its runner (mcpp-community/mcpp#889). `lexically_normal`
+now begins its result with the volume and its root directory as written, and
+appending a rooted name beneath a volume keeps the volume (`D:/b`), as
+[fs.path.append] states it for a system with root names. Both probes state the
+three results; without the change two fail on Linux and under the Windows hosted
+arrangement.
 
 Runtime 0.19.1 reads a name beneath a volume, `X:/...`, as the C library beneath
 does: `X:` is the root name and `/` the root directory, so the working directory on
