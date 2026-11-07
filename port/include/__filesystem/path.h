@@ -510,7 +510,34 @@ public:
     return operator/=(path(__first, __last));
   }
 #  else
+#    if defined(OPENKAL) || defined(__OPENKAL__)
+  // openkal: A NAME BENEATH A VOLUME KEEPS ITS VOLUME (0.19.2).
+  //
+  // Appending a name that has a root directory and no root name (`/b`) to a
+  // name beneath a volume (`D:/a`) replaces the root directory and the
+  // relative path, and keeps the volume: `D:/b`, as [fs.path.append] states it
+  // for a system with root names. Taken as the whole name, `/` lost the
+  // volume in every builder that appends element by element:
+  // `D:/a/b`.lexically_normal() was `/a/b`, and so was a name that
+  // weakly_canonical and relative rebuild (0.19.1 made `X:/` a root name,
+  // openkal-llvm-runtime#64; mcpp-community/mcpp#889 found the loss).
+  _LIBCPP_HIDE_FROM_ABI bool __openkal_keep_volume(const path& __p) {
+    if (!__p.__root_name().empty() || __p.__root_directory().empty())
+      return false;
+    const __string_view __volume = __root_name();
+    if (__volume.empty())
+      return false;
+    string_type __whole(__volume);
+    __whole += __p.__pn_;
+    __pn_ = std::move(__whole);
+    return true;
+  }
+#    endif
   _LIBCPP_HIDE_FROM_ABI path& operator/=(const path& __p) {
+#    if defined(OPENKAL) || defined(__OPENKAL__)
+    if (__openkal_keep_volume(__p))
+      return *this;
+#    endif
     if (__p.is_absolute()) {
       __pn_ = __p.__pn_;
       return *this;
@@ -543,6 +570,8 @@ public:
         __pn_ = std::move(__whole.__pn_);
         return *this;
       }
+    } else if (__openkal_keep_volume(path(__src))) {
+      return *this;
     }
 #    endif
     if (__source_is_absolute)
@@ -558,6 +587,10 @@ public:
     typedef typename iterator_traits<_InputIt>::value_type _ItVal;
     static_assert(__can_convert_char<_ItVal>::value, "Must convertible");
     using _CVT = _PathCVT<_ItVal>;
+#    if defined(OPENKAL) || defined(__OPENKAL__)
+    if (__first != __last && filesystem::__is_separator(*__first) && __openkal_keep_volume(path(__first, __last)))
+      return *this;
+#    endif
     if (__first != __last && filesystem::__is_separator(*__first))
       __pn_.clear();
     else if (has_filename())

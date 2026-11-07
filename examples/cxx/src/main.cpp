@@ -153,6 +153,15 @@ int main() {
         check(fs::absolute(cwd, cwd_ec) == cwd && !cwd_ec, "absolute() of it is itself");
         const fs::path can = fs::canonical(cwd, cwd_ec);
         check(!cwd_ec && can.is_absolute(), "canonical() of it succeeds");
+        // 0.19.2: a builder that appends element by element keeps the volume.
+        check((fs::path("D:/a") / "/b") == "D:/b" && (fs::path("D:/a") / fs::path("/b")) == "D:/b"
+                  && fs::path("D:/a").append(std::string("/b")) == "D:/b", "a rooted name appended beneath a volume keeps it");
+        check(fs::path("D:/a/./b/../c").lexically_normal() == "D:/a/c" && fs::path("D:/").lexically_normal() == "D:/",
+              "lexically_normal() keeps the volume");
+        check((fs::path("/a") / "/b") == "/b" && fs::path("/a/../b").lexically_normal() == "/b", "and `/' is unchanged");
+        const fs::path missing = cwd / "openkal-no-such-name" / "." / "x";
+        const fs::path weak = fs::weakly_canonical(missing, cwd_ec);
+        check(!cwd_ec && weak.is_absolute() && weak.root_name() == cwd.root_name(), "weakly_canonical() keeps the working directory's volume");
     }
 
     // --- std::filesystem, which is the C++ face of openkal.fs ---------------

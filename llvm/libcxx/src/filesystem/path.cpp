@@ -224,8 +224,28 @@ path path::lexically_normal() const {
 
   path Result;
   Result.__pn_.reserve(Parts.size() + NewPathSize + NeedTrailingSep);
+// ─── openkal ─── BEGIN ────────────────────────────────────────────────────────
+#if defined(OPENKAL)
+  // openkal: THE VOLUME AND ITS ROOT DIRECTORY BEGIN THE RESULT AS WRITTEN.
+  //
+  // `X:` is a root name only with the separator after it (path_parser.h), so
+  // appended part by part `D:` was an ordinary name and the root directory
+  // `/` replaced it: `D:/a/./b`.lexically_normal() was `/a/b`, and
+  // weakly_canonical, which ends in it, lost the volume the same way
+  // (0.19.2; mcpp-community/mcpp#889).
+  size_t First = 0;
+  if (Parts.size() >= 2 && Parts[1].second == PK_RootSep && has_root_name()) {
+    Result.__pn_ += Parts[0].first;
+    Result.__pn_ += Parts[1].first;
+    First = 2;
+  }
+  for (size_t I = First; I < Parts.size(); ++I)
+    Result /= Parts[I].first;
+#else
   for (auto& PK : Parts)
     Result /= PK.first;
+#endif
+// ─── openkal ─── END ──────────────────────────────────────────────────────────
 
   if (NeedTrailingSep)
     Result /= PATHSTR("");

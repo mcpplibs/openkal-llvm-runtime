@@ -29,10 +29,10 @@ grep -rn "openkal ─── BEGIN" llvm/
 
 ## 已替换
 
- 六处,五个文件,一个判据 —— 每一处都能填进上面那句话。
+ 七处,六个文件,一个判据 —— 每一处都能填进上面那句话。
 
 ```sh
-grep -rn "openkal ─── BEGIN" llvm/    # 30 处 BEGIN 标记
+grep -rn "openkal ─── BEGIN" llvm/    # 31 处 BEGIN 标记
 ```
 
 | 文件 | 上游按什么分派 | 平台面 | openkal 的答案 |
@@ -43,6 +43,7 @@ grep -rn "openkal ─── BEGIN" llvm/    # 30 处 BEGIN 标记
 | `libunwind/src/UnwindCursor.hpp` | `_WIN32` | (无) | 整段没被用到,只是被 include |
 | `compiler-rt/…/emutls.c` | `_WIN32` | 互斥 + 对齐分配 | pthread + `posix_memalign` |
 | `libcxx/src/filesystem/path_parser.h` | `_LIBCPP_WIN32API` | 名字的根 | C 库的根：`/` 与 `X:/`（0.19.1） |
+| `libcxx/src/filesystem/path.cpp` | （无，`/=` 的 POSIX 语义） | 规范化的结果 | 卷与根目录按原样开头（0.19.2） |
 
 ### `libcxx/src/filesystem/path_parser.h` 与 `port/include/__filesystem/path.h` — 卷下的名字（0.19.1）
 
@@ -57,6 +58,13 @@ C 库（openkal-musl）在有卷的系统上把文件写作 `D:/...`，并像对
 - `__filesystem/path.h` 的 `append(Source)` 在 POSIX 分支只看首字符是否为分隔符；覆盖件在
   `OPENKAL` 或 `__OPENKAL__` 下改用 `path::is_absolute()` 判断，使 `path / "D:/y"` 与
   `path / path("D:/y")` 结果相同。头文件按本文的约定放在 `port/include/` 覆盖，vendored 树不动。
+- 0.19.2：`X:` 只有后跟分隔符时才是根名，而 `lexically_normal` 逐段用 `/=` 重建结果：`D:` 被当作
+  普通名字，随后的根目录 `/` 按 POSIX 语义替换了它，`D:/a/./b` 变成 `/a/b`；以它收尾的
+  `weakly_canonical` 同样丢卷。Windows 上经托管方式运行的程序因此把文件名放到了卷之外，启动器
+  无法启动其运行器（mcpp-community/mcpp#889）。`path.cpp` 的 `lexically_normal` 在 `OPENKAL` 下
+  以原样的卷与根目录开头（原地标记）；覆盖件的 `operator/=` 与两个 `append` 在追加“有根目录、
+  无根名”的名字时保留本身的卷（`D:/a` / `/b` 为 `D:/b`），与 [fs.path.append] 对有根名系统的规定
+  一致。
 
 ### `libcxx/src/atomic.cpp` — `std::atomic` 的等待与唤醒
 
