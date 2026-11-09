@@ -28,10 +28,17 @@ env:
   # Windows program built here links no Win32 library mimalloc's own layer names.
   # The image matrix uses the corrected platform group selected by this engine.
   # MCPP_SOURCE_REF supplies its candidate until the release is installable.
-  MCPP_VERSION: 2026.11.5.1
+  # 0.20.0: 2026.11.9.1, for the tests on the mtest library (a test file of
+  # mtest's objects has no `main' from 2026.11.8.1, and `mcpp test' keeps its
+  # runs in mtest's store from 2026.11.9.1).
+  MCPP_VERSION: 2026.11.9.1
   XLINGS_VERSION: v2026.10.26.1
   # okrun is built from openkal-image, whose openkal-run states its own floor.
   OKRUN_MCPP_VERSION: 2026.11.9.1
+  # The mtest engine this runtime's tests (tests/, on the mtest library) are
+  # reported with.
+  MTEST_VERSION: 0.5.2
+  MTEST_SHA256: be443f8c546b3f4628dcd3f1eb6f45b4d698a7f805232f966349faf8250863c6
   XLINGS_NON_INTERACTIVE: '1'
 
 jobs:
@@ -132,6 +139,37 @@ jobs:
         run: |
           cd examples/import-std && mcpp run 2>&1 | tee out.log
           grep -q 'import std above openkal: 2 4 7' out.log
+
+      # THE RUNTIME'S TESTS, ON THE mtest LIBRARY (tests/): examples/cxx's
+      # observations as one case, a second name for a file through
+      # std::filesystem, and a program found by the system's conventions. A
+      # package beside the runtime, as the examples are; `mcpp test' keeps the
+      # run in mtest's store (tests/target/mtest).
+      - name: The runtime's tests
+        run: |
+          set -euo pipefail
+          cd tests && mcpp test 2>&1 | tee tests.log
+          grep -q 'test result ok' tests.log
+
+      - uses: ./.github/actions/mtest
+        if: always()
+
+      - name: The runs, reported
+        if: always()
+        run: |
+          [ -n "${MTEST:-}" ] && [ -f tests/target/mtest/index.ndjson ] || { echo "no run was kept"; exit 0; }
+          store="$RUNNER_TEMP/mtest-store"; mkdir -p "$store"
+          ( cd "$store" && "$MTEST" store import --from "$GITHUB_WORKSPACE/tests/target/mtest" )
+          ( cd "$store" && "$MTEST" report --format md --group "$GITHUB_RUN_ID" ) >> "$GITHUB_STEP_SUMMARY" || true
+
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: mtest-${{ github.job }}-${{ strategy.job-index }}
+          path: ${{ runner.temp }}/mtest-store/.mtest
+          include-hidden-files: true
+          if-no-files-found: ignore
+          retention-days: 7
 
       # WHAT A FRONT END DOES WITH THE RUNTIME, TIMED AGAINST THE SYSTEM'S OWN
       # (0.17.0; the design's L2). bench/ built above this runtime, and with
@@ -649,6 +687,66 @@ jobs:
           grep -q 'caught: 42'      out.log
           grep -q 'unwound: true'   out.log
           grep -q 'import std over openkal: ok' out.log
+
+      # THE RUNTIME'S TESTS ON THIS HOST (tests/, on the mtest library). On
+      # Windows this is where a program named without a separator is looked
+      # for by that system's conventions: `hostname' through a semicolon
+      # PATH and PATHEXT (openkal-musl 0.29.0).
+      - name: The runtime's tests on this host
+        run: |
+          set -euo pipefail
+          cd tests && rm -rf target
+          mcpp test --target '${{ matrix.native }}' 2>&1 | tee tests.log
+          grep -q 'test result ok' tests.log
+
+      - uses: ./.github/actions/mtest
+        if: always()
+
+      - name: The runs, reported
+        if: always()
+        run: |
+          [ -n "${MTEST:-}" ] && [ -f tests/target/mtest/index.ndjson ] || { echo "no run was kept"; exit 0; }
+          store="$(cygpath -u "$RUNNER_TEMP" 2> /dev/null || printf '%s' "$RUNNER_TEMP")/mtest-store"; mkdir -p "$store"
+          here="$PWD"
+          ( cd "$store" && "$MTEST" store import --from "$here/tests/target/mtest" )
+          ( cd "$store" && "$MTEST" report --format md --group "$GITHUB_RUN_ID" ) >> "$GITHUB_STEP_SUMMARY" || true
+
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: mtest-${{ github.job }}-${{ strategy.job-index }}
+          path: ${{ runner.temp }}/mtest-store/.mtest
+          include-hidden-files: true
+          if-no-files-found: ignore
+          retention-days: 7
+
+  # EVERY JOB'S RUNS AS ONE REPORT (`mtest ci report`, the workflow run's group).
+  report:
+    name: tests (report)
+    needs: [runtime, host-dimension]
+    if: always()
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+      - uses: ./.github/actions/mtest
+      - uses: actions/download-artifact@v4
+        with:
+          pattern: mtest-*
+          path: ${{ runner.temp }}/stores
+      - name: Every job's runs, reported together
+        shell: bash
+        run: |
+          set -euo pipefail
+          found=0
+          for store in "$RUNNER_TEMP"/stores/*/; do
+            [ -f "$store/index.ndjson" ] || continue
+            "$MTEST" store import --from "$store"
+            found=1
+          done
+          if [ "$found" = 0 ]; then echo "no job kept a run" >> "$GITHUB_STEP_SUMMARY"; exit 0; fi
+          "$MTEST" ci report --out "$RUNNER_TEMP/tests.md"
+          cat "$RUNNER_TEMP/tests.md" >> "$GITHUB_STEP_SUMMARY"
 
   # ── AN OK IMAGE (`<arch>-openkal`, openkal SPEC clause 12) ─────────────────
   #

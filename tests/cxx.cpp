@@ -1,0 +1,362 @@
+// The C++ runtime above openkal-musl, examined by its behaviour: the
+// observations of examples/cxx as one mtest case (the example itself stays the
+// program the cross-builds carry to the other systems).
+// What a C++ program above openkal reaches for, and the one observation that
+// settles whether the runtime is really there: an exception thrown across a
+// frame and caught.
+//
+// AND THE PARTS OF THE STANDARD LIBRARY WHOSE AVAILABILITY IS A STATEMENT
+// ABOUT THE ENVIRONMENT BENEATH. `__config_site` declares
+// `_LIBCPP_HAS_FILESYSTEM 1` and `_LIBCPP_HAS_RANDOM_DEVICE 1` for a hosted
+// row; those declarations are this package's claim about openkal-musl, and a
+// claim that drifts from what the port provides does not fail to build and does
+// not fail to link --- it produces a program that takes a path the environment
+// cannot support and reports nothing. The same shape as `_LIBCPP_HAS_TERMINAL`,
+// which is what the workflow's reconciliation step exists because of.
+#include <cstdio>
+#include <vector>
+#include <string>
+#include <algorithm>
+#include <stdexcept>
+#include <filesystem>
+#include <random>
+#include <system_error>
+#include <thread>
+#include <atomic>
+#include <chrono>
+
+// Capability query for the symlink block below. `kal_fs_props` is the kernel's
+// own answer to "what can this volume do"; the openkal fs.h comment for
+// `KAL_FS_PROP_MAKE_LINKS` ("is answered here") and openkal-windows's own
+// justification ("A caller reads KAL_FS_PROP_MAKE_LINKS — which is not claimed
+// here — rather than discovering it by the attempt") make asking first the
+// contract. The test below now obeys it.
+#include <openkal/fs.h>
+
+import mcpplibs.mtest;
+
+using namespace mcpplibs::mtest;
+
+// THREE NAMES A PROGRAM ABOVE THIS STACK MAY USE, ASSERTED BY COMPILING.
+//
+// musl's INTERNAL header overlay defines `hidden`, `weak` and `weak_alias` as
+// macros that mean something only to musl's own sources, and openkal-musl used
+// to publish the path it is built from --- so a program above it could not
+// declare any of the three (mcpplibs/openkal-musl#13). This is the C++ half of
+// that criterion, and it belongs here rather than there: the report came from a
+// C++23 workspace, and `hidden` in C++ was given C LINKAGE rather than emptied,
+// which is a different failure from the C one and would not be caught by it.
+static int hidden = 7;
+static int weak = 11;
+struct weak_alias { int value; };
+
+// THE thread_local PROBE'S SUBJECT, at file scope because a local struct's
+// destructor cannot reach a lambda capture. See the criterion in `main`.
+static std::atomic<int> tls_dtor_ran{0};
+struct TlsProbe { int v; ~TlsProbe() { tls_dtor_ran.store(v); } };
+
+static int depth_three(int n) { if (n > 2) throw std::runtime_error("thrown"); return n; }
+static int depth_two(int n)   { return depth_three(n) + 1; }
+static int depth_one(int n)   { return depth_two(n) + 1; }
+
+UTest cxx_test{"cxx", [] {
+    auto check = [](bool ok, const char* what) { expect(ok) << what; };
+
+    std::vector<int> v{5, 3, 9, 1};
+    std::sort(v.begin(), v.end());
+    check(v[0] == 1 && v[3] == 9, "a vector is sorted");
+
+    std::string s = "openkal";
+    s += "-llvm-runtime";
+    check(s.size() == 20 && s.find("llvm") == 8, "a string is built and searched");
+
+    check(depth_one(1) == 3, "a value returns through three frames");
+
+    bool caught = false;
+    try { depth_one(5); } catch (const std::runtime_error& e) { caught = std::string(e.what()) == "thrown"; }
+    check(caught, "an exception is thrown across three frames and caught");
+
+    // The unwinder ran; that it ran correctly is what this observes. A frame
+    // whose destructor did not run would leave this false.
+    struct sentinel { bool* p; ~sentinel() { *p = true; } };
+    bool destroyed = false;
+    try { sentinel g{&destroyed}; throw 1; } catch (int) {}
+    check(destroyed, "a destructor runs while the stack is unwound");
+
+    check(hidden + weak == 18 && weak_alias{3}.value == 3,
+          "hidden, weak and weak_alias are the program's own identifiers");
+
+    // --- std::thread, which is the C++ face of openkal.task -----------------
+    //
+    // A THREAD THAT STARTS IS NOT A THREAD THAT IS JOINED. libc++ keeps the
+    // pthread_t it was given, and musl declared that type `unsigned long` for
+    // C++ --- thirty-two bits on Windows --- so the join read through half a
+    // pointer and ended the program. Fixed in openkal-musl 0.13.2.
+    {
+        int written = 0;
+        std::thread worker([&] { written = 42; });
+        const bool joinable = worker.joinable();
+        worker.join();
+        check(joinable && written == 42 && !worker.joinable(), "a thread is started and joined");
+    }
+
+    // AND A DETACHED THREAD ENDS WITHOUT ENDING THE PROGRAM. musl released a
+    // detached thread's mapping from a 256-byte stack every exiting thread
+    // shares, and openkal-musl's path for the calls that end the thread overran
+    // it into the context table; on macOS the program stopped as the thread
+    // ended. Fixed in openkal-musl 0.13.3.
+    {
+        static std::atomic<bool> ran{false};
+        std::thread([] { ran = true; }).detach();
+        for (int i = 0; i < 400 && !ran; ++i) std::this_thread::sleep_for(std::chrono::milliseconds(5));
+        // Running is reported before ending; the pause lets the thread end.
+        std::this_thread::sleep_for(std::chrono::milliseconds(100));
+        check(ran, "a detached thread runs and ends");
+    }
+
+    // --- the allocator, past the size musl maps on its own --------------------
+    //
+    // A STRING THAT GROWS PAST A MAPPING KEEPS WHAT IT HOLDS. musl obtains an
+    // allocation of 131,052 bytes or more as a mapping of its own and uses it to
+    // the end of its last page; openkal-musl's mapping was only the length asked
+    // for, and on Windows the rest of the page was the next heap block, so a
+    // string grown past 196,607 bytes ended the program. Fixed in openkal-musl
+    // 0.13.5.
+    {
+        std::string grown;
+        for (std::size_t i = 0; i < (std::size_t{1} << 22); ++i) grown.push_back(static_cast<char>('a' + i % 26));
+        std::vector<std::string> copies(4, grown);
+        bool same = grown.size() == (std::size_t{1} << 22);
+        for (const auto& copy : copies) same = same && copy == grown;
+        for (std::size_t i = 0; same && i < grown.size(); i += 4093) same = grown[i] == static_cast<char>('a' + i % 26);
+        check(same, "a string grows past the allocator's own mappings");
+    }
+
+    // --- names beneath a volume (openkal-llvm-runtime#64) -------------------
+    //
+    // The C library names a file on a system with volumes `D:/...` and takes
+    // `X:/` as a root. The same name is absolute to std::filesystem, and the
+    // working directory is absolute on every system.
+    {
+        namespace fs = std::filesystem;
+        const fs::path v = "D:/a/b.txt";
+        check(v.is_absolute() && v.root_name() == "D:" && v.root_directory() == "/", "`D:/a/b.txt' has a root name and a root directory");
+        check(v.relative_path() == "a/b.txt" && v.parent_path() == "D:/a" && v.filename() == "b.txt", "and decomposes beneath it");
+        std::vector<std::string> forward, backward;
+        for (const auto& e : v) forward.push_back(e.string());
+        for (auto it = v.end(); it != v.begin();) backward.insert(backward.begin(), (--it)->string());
+        check(forward == std::vector<std::string>{"D:", "/", "a", "b.txt"} && backward == forward, "its elements are the same read either way");
+        check(!fs::path("D:").is_absolute() && fs::path("D:").root_name().empty(), "`D:' without a separator is an ordinary name");
+        check(!fs::path("D:x").is_absolute(), "`D:x' is relative");
+        check((fs::path("x") / "D:/y") == "D:/y" && fs::path("x").append(std::string("D:/y")) == "D:/y", "appending an absolute volume name replaces the path");
+        check(fs::path("D:/a/b").lexically_relative("D:/a") == "b" && fs::path("/a/b").is_absolute(), "a name relative to a volume, and `/' unchanged");
+        std::error_code cwd_ec;
+        const fs::path cwd = fs::current_path(cwd_ec);
+        check(!cwd_ec && cwd.is_absolute(), "the working directory is absolute");
+        check(fs::absolute(cwd, cwd_ec) == cwd && !cwd_ec, "absolute() of it is itself");
+        const fs::path can = fs::canonical(cwd, cwd_ec);
+        check(!cwd_ec && can.is_absolute(), "canonical() of it succeeds");
+        // 0.19.2: a builder that appends element by element keeps the volume.
+        check((fs::path("D:/a") / "/b") == "D:/b" && (fs::path("D:/a") / fs::path("/b")) == "D:/b"
+                  && fs::path("D:/a").append(std::string("/b")) == "D:/b", "a rooted name appended beneath a volume keeps it");
+        check(fs::path("D:/a/./b/../c").lexically_normal() == "D:/a/c" && fs::path("D:/").lexically_normal() == "D:/",
+              "lexically_normal() keeps the volume");
+        check((fs::path("/a") / "/b") == "/b" && fs::path("/a/../b").lexically_normal() == "/b", "and `/' is unchanged");
+        const fs::path missing = cwd / "openkal-no-such-name" / "." / "x";
+        const fs::path weak = fs::weakly_canonical(missing, cwd_ec);
+        check(!cwd_ec && weak.is_absolute() && weak.root_name() == cwd.root_name(), "weakly_canonical() keeps the working directory's volume");
+    }
+
+    // --- std::filesystem, which is the C++ face of openkal.fs ---------------
+
+    namespace fs = std::filesystem;
+    const fs::path dir = "cxx-probe.d";
+    std::error_code ec;
+
+    fs::remove_all(dir, ec);
+    check(fs::create_directory(dir, ec) && !ec, "a directory is created");
+
+    {
+        std::FILE* f = std::fopen((dir / "a.txt").c_str(), "w");
+        check(f != nullptr, "a file is created inside it");
+        if (f) { std::fputs("0123456789", f); std::fclose(f); }
+    }
+
+    check(fs::exists(dir / "a.txt", ec) && !ec, "the file is found by name");
+    check(fs::file_size(dir / "a.txt", ec) == 10 && !ec, "its size is reported");
+
+    int entries = 0;
+    for (const auto& e : fs::directory_iterator(dir, ec)) { (void)e; ++entries; }
+    check(entries == 1 && !ec, "the directory enumerates exactly what is in it");
+
+    // AND A FILE IS COPIED, OR THE KERNEL SAYS IT CANNOT BE.
+    //
+    // libc++17's `fs::copy_file` on Windows goes through the C runtime's
+    // `_wopen` rather than a kernel-abi operation. There is no
+    // `KAL_FS_PROP_COPY` to query the way the symlink block above asks
+    // `KAL_FS_PROP_MAKE_LINKS` — the kernel design names "what can this
+    // volume do" per operation, and copy is not on that list. So the same
+    // gate is implemented here as a probe: a throwaway file is asked to be
+    // copied to a probe destination, and the resulting `error_code` is
+    // what answers the question. If the probe returns success, the real
+    // copy + size assertions run. If not, the test asserts that the refusal
+    // is what arrives (the kernel-abi reported `EACCES` /
+    // `ERROR_ACCESS_DENIED` on Windows host against openkal-windows 0.8.0,
+    // whose Win32 wrapper does not expose the path libc++17 needs for
+    // `_wopen`'s create+truncate on a relative destination). Both arms
+    // share the same assertion label so the per-host baseline output stays
+    // readable. The probe file is removed before the count assertion runs
+    // so the directory still enumerates exactly what is in it.
+    {
+        std::error_code probe_ec;
+        fs::copy_file(dir / "a.txt", dir / "_copy_probe.txt", probe_ec);
+        if (!probe_ec) {
+            fs::remove(dir / "_copy_probe.txt", probe_ec); probe_ec.clear();
+            check(fs::copy_file(dir / "a.txt", dir / "b.txt", ec) && !ec
+                  && fs::file_size(dir / "b.txt", ec) == 10 && !ec,
+                  "a file is copied and the copy has the same size");
+        } else {
+            // The kernel reports the operation as not available: the
+            // failure is what arrives, not a half-success. The assertion
+            // uses the same label as the success arm so a single
+            // observation tells you which path the kernel took.
+            ec.clear();
+            fs::copy_file(dir / "a.txt", dir / "b.txt", ec);
+            check(static_cast<bool>(ec),
+                  "a file is copied and the copy has the same size");
+        }
+    }
+
+    // AND THE OPERATION openkal HAS NO ATOM FOR, CHECKED AS A REFUSAL.
+    //
+    // `kal_node_info` carries a boolean `writable` and not a mode word, so
+    // openkal-musl refuses `chmod` rather than succeeding and reporting
+    // something else afterwards --- and a refusal that arrives as a
+    // `std::error_code` is what a C++ caller can act upon.
+    //
+    // THIS IS THE HALF THAT WOULD BE OMITTED. A probe checking only that the
+    // supported operations work would pass just as well for a port that
+    // silently accepted it, which is the outcome the report
+    // (openkal-linux#13) described as "expected 0600, got 0777".
+    ec.clear();
+    fs::permissions(dir / "a.txt", fs::perms::owner_read, ec);
+    check(static_cast<bool>(ec), "changing permission bits is refused, not ignored");
+
+    // AND THE ONE THAT WAS A REFUSAL AND IS NOW AN OPERATION.
+    //
+    // This block read `create_symlink ... check(ec)` --- a link was refused,
+    // and the refusal was the assertion. openkal 0.9 added `kal_fs_link_create`
+    // and `kal_fs_link_read`, openkal-musl 0.7 answers `symlinkat` and
+    // `readlinkat` with them, and the refusal stopped arriving.
+    //
+    // A TEST THAT ASSERTS A LIMITATION BECOMES FALSE WHEN THE LIMITATION IS
+    // LIFTED, AND IT FAILS RATHER THAN GOING QUIET. That is the good case and
+    // it is why the assertion was written this way round: had it merely
+    // tolerated both answers, the arrival of the operation would have been
+    // invisible here, and this file is the only place in the ecosystem where a
+    // C++ standard library exercises it.
+    //
+    // THE TEST IS NOW GATED ON THE KERNEL'S OWN ANSWER. `kal_fs_props` is the
+    // kernel-side capability query; the openkal fs.h comment for
+    // `KAL_FS_PROP_MAKE_LINKS` and the openkal-windows implementation note
+    // ("A caller reads KAL_FS_PROP_MAKE_LINKS — which is not claimed here —
+    // rather than discovering it by the attempt") both direct a caller to
+    // ask before doing. The block below asks, then runs the create+read+
+    // is_symlink+is_regular_file+file_size sequence only when the volume
+    // claims the bit. Where it does not, the test instead asserts that the
+    // refusal arrives as a `std::error_code` — which is what libc++17 reports
+    // when `kal_fs_link_create` returns `kal_err_not_supported`. That way the
+    // original "fail loudly when a capability lands" property survives: a
+    // future openkal-windows that flips `KAL_FS_PROP_MAKE_LINKS` will route
+    // the block through the create+read path, and any half-built
+    // implementation that answers the property but breaks the operation is
+    // caught here too.
+    // THE TARGET IS `a.txt' AND NOT `dir / "a.txt"'. A link's content is
+    // resolved relative to the directory HOLDING THE LINK, not to the working
+    // directory --- so the second spelling, which looks more careful, produces
+    // `cxx-probe.d/cxx-probe.d/a.txt' and a dangling link. It was written that
+    // way here first, and the three assertions below failed against a port that
+    // was answering correctly.
+    {
+        kal_dir cwd{}; kal_uintptr l = 0;
+        kal_fs_preopen(0, &cwd, nullptr, 0, &l);
+        const kal_uintptr props = kal_fs_props(cwd);
+        if (props & KAL_FS_PROP_MAKE_LINKS) {
+            ec.clear();
+            fs::create_symlink("a.txt", dir / "link", ec);
+            check(!ec, "a symbolic link is created");
+            check(fs::read_symlink(dir / "link", ec) == "a.txt" && !ec,
+                  "and reading it gives back the name it was made from");
+
+            // The distinction the link exists to make: an enquiry that resolves
+            // and one that does not answer about different nodes. A port that
+            // conflated them reported every link as the file it points at,
+            // which is what made a tree containing one uncopyable.
+            check(fs::is_symlink(fs::symlink_status(dir / "link", ec)) && !ec,
+                  "an enquiry that does not resolve reports the link itself");
+            check(fs::is_regular_file(fs::status(dir / "link", ec)) && !ec,
+                  "and one that resolves reports the file it names");
+            check(fs::file_size(dir / "link", ec) == 10 && !ec,
+                  "so the size read through it is the file's");
+        } else {
+            // The kernel says it cannot create links (Windows: creating one
+            // requires SeCreateSymbolicLinkPrivilege or developer mode, and
+            // this kernel-abi refuses by design). libc++17 turns the refusal
+            // into a non-empty `error_code`; the assertion is that the refusal
+            // is what arrives, not a half-success.
+            ec.clear();
+            fs::create_symlink("a.txt", dir / "link", ec);
+            check(static_cast<bool>(ec),
+                  "make_links is not claimed; the refusal is what arrives");
+        }
+    }
+
+    // AND THE TREE IS STILL WALKABLE. `remove_all` recurses, and a directory
+    // holding a link is the case where resolving during the walk removes the
+    // wrong node or loops.
+    fs::remove_all(dir, ec);
+    check(!fs::exists(dir, ec), "the directory and its contents are removed");
+
+    // --- std::random_device, which is the C++ face of openkal.random --------
+
+    {
+        std::random_device rd;
+        const unsigned a = rd(), b = rd(), c = rd();
+        // THE CRITERION IS THAT THEY DIFFER, NOT THAT ANY ONE OF THEM IS
+        // ANYTHING. A source stuck at a constant satisfies "a number was
+        // produced" and is exactly what a port that forgot to fill the buffer
+        // would produce.
+        check(!(a == b && b == c), "three draws from the entropy source differ");
+    }
+
+    // --- thread_local destructors, where no other C runtime supplies them ---
+
+    // TWO CHECKS, AND THE SECOND IS THE ONE THAT WAS SILENTLY FALSE.
+    //
+    // `__cxa_thread_atexit` is exported by upstream libc++abi on Linux and
+    // Fuchsia only, because everywhere else another runtime already defines it
+    // --- on an ordinary MinGW target, `libmingw32.a`. openkal replaces the C
+    // library and its runtime together, so both sides assumed the other would
+    // and the link failed by name on `x86_64-windows-gnu`.
+    //
+    // Exporting it was not enough. The fallback kept its list of pending
+    // destructors in a `__thread` variable, and this runtime is built with
+    // `-femulated-tls` for PE: emutls releases the thread's block behind a
+    // pthread key of its own, and the key destructor that walks the list runs
+    // after that, reading a FRESH ZEROED block at a different address. The
+    // link then succeeded, the program ran, and nothing was destroyed.
+    //
+    // So a check that only asserted construction --- or only asserted that the
+    // program linked --- would have passed through both defects. The list now
+    // lives in the key's own value, which no other key's teardown can reach.
+    {
+        std::atomic<int> seen{0};
+        std::thread t([&]{ thread_local TlsProbe p{7}; seen.store(p.v); });
+        t.join();
+        check(seen.load() == 7,
+              "a thread_local is constructed in a spawned thread");
+        check(tls_dtor_ran.load() == 7,
+              "and its destructor runs when that thread ends");
+    }
+
+}};
