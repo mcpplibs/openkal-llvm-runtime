@@ -122,3 +122,30 @@ if grep -nE '^openkal[a-z-]* = ("|\{ version)' "${manifests[@]}"; then
 fi
 
 echo "the whole stack names working trees; nothing in it names a version"
+
+# THE TESTS' PACKAGE NAMES THE SAME TREES, AND FROM ITS ROOT. tests/ reaches
+# the test library, which reaches mcpplibs.os, which states the specification
+# and the system's implementation by version; the trees above are named by the
+# C library, which is not the root, and an engine refuses a package requested
+# both by path from inside the graph and by version ("Pick one"). Declared by
+# the tests' own manifest, the root's declaration is the one used.
+if [ -f tests/mcpp.toml ]; then
+    {
+        echo ""
+        echo "# Written by tools/branch-graph.sh: the stack's working trees."
+        echo "[dependencies.mcpplibs]"
+        echo "openkal = { path = \"../.spec\" }"
+        for backend in $(grep -oE '^openkal-[a-z]+ = \{ path = "\.\./\.openkal-[a-z]+"' .musl/mcpp.toml | cut -d' ' -f1); do
+            case "$backend" in
+                openkal-linux)   cond='os = "linux"' ;;
+                openkal-macos)   cond='os = "macos"' ;;
+                openkal-windows) cond='windows' ;;
+                *)               continue ;;
+            esac
+            echo ""
+            echo "[target.'cfg($cond)'.dependencies.mcpplibs]"
+            echo "$backend = { path = \"../.$backend\" }"
+        done
+    } >> tests/mcpp.toml
+    echo "the tests' package names the same trees"
+fi
