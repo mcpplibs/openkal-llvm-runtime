@@ -1,0 +1,20 @@
+# The runtime's tests, on the mtest library: a C++ program above this runtime,
+# above openkal-musl, above the openkal implementation of the system the tests
+# run on. A package of its own beside the runtime, as the examples are, because
+# the runtime's own build is the one that makes libc++ (its flags, its dialect)
+# and a program that imports std is a consumer of what that build makes.
+[package]
+name    = "openkal-llvm-runtime-tests"
+version = "0.1.0"
+
+[dependencies]
+openkal-llvm-runtime = { path = ".." }
+
+[dev-dependencies]
+mcpplibs.mtest = "0.5.2"
+
+[test]
+discover = ["*.cpp"]
+
+[toolchain]
+default = "llvm@22.1.8"

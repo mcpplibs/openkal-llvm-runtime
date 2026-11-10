@@ -6,7 +6,7 @@ C library.
 
 ```toml
 [dependencies]
-openkal-llvm-runtime = "0.19.2"
+openkal-llvm-runtime = "0.20.0"
 ```
 
 > **Engine floor (mcpp 2026.11.2.1):** 0.17.0 is built over openkal-musl 0.26.0,
@@ -327,6 +327,16 @@ system's libstdc++ and glibc:
 openkal-musl 0.27.3 selects openkal-linux 0.24.1 on Linux and openkal-ld 0.4.3
 for an image. Linux confinement requires Landlock ABI 3 to enforce read-only
 grants against raw file truncation. The runtime implementation is unchanged.
+
+## OpenKal 0.25 dependency group
+
+Runtime 0.20.0 is built over openkal-musl `^0.29.0` and the OpenKal 0.25
+implementations beneath it (Linux 0.26, macOS 0.23, Windows 0.21, OpenSBI 0.9).
+The C++ runtime surface and the allocator selection are unchanged. Through the C
+library, `std::filesystem::create_hard_link` gives a file a second name
+(`link`, over `kal_fs_hard_link`), and a program named without a separator is
+looked for by the system's conventions: on Windows PATH is split on `;` and the
+`PATHEXT` suffixes are tried.
 
 ## OpenKal 0.24 dependency group
 
