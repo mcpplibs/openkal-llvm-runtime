@@ -35,10 +35,6 @@ env:
   XLINGS_VERSION: v2026.10.26.1
   # okrun is built from openkal-image, whose openkal-run states its own floor.
   OKRUN_MCPP_VERSION: 2026.11.9.1
-  # The mtest engine this runtime's tests (tests/, on the mtest library) are
-  # reported with.
-  MTEST_VERSION: 0.5.2
-  MTEST_SHA256: be443f8c546b3f4628dcd3f1eb6f45b4d698a7f805232f966349faf8250863c6
   XLINGS_NON_INTERACTIVE: '1'
 
 jobs:
@@ -151,25 +147,11 @@ jobs:
           cd tests && mcpp test 2>&1 | tee tests.log
           grep -q 'test result ok' tests.log
 
-      - uses: ./.github/actions/mtest
-        if: always()
-
-      - name: The runs, reported
-        if: always()
-        run: |
-          [ -n "${MTEST:-}" ] && [ -f tests/target/mtest/index.ndjson ] || { echo "no run was kept"; exit 0; }
-          store="$RUNNER_TEMP/mtest-store"; mkdir -p "$store"
-          ( cd "$store" && "$MTEST" store import --from "$GITHUB_WORKSPACE/tests/target/mtest" )
-          ( cd "$store" && "$MTEST" report --format md --group "$GITHUB_RUN_ID" ) >> "$GITHUB_STEP_SUMMARY" || true
-
-      - uses: actions/upload-artifact@v4
+      # The runs `mcpp test` kept, reported and kept for the report job.
+      - uses: ./.github/actions/test-report
         if: always()
         with:
           name: mtest-${{ github.job }}-${{ strategy.job-index }}
-          path: ${{ runner.temp }}/mtest-store/.mtest
-          include-hidden-files: true
-          if-no-files-found: ignore
-          retention-days: 7
 
       # WHAT A FRONT END DOES WITH THE RUNTIME, TIMED AGAINST THE SYSTEM'S OWN
       # (0.17.0; the design's L2). bench/ built above this runtime, and with
@@ -699,26 +681,11 @@ jobs:
           mcpp test --target '${{ matrix.native }}' 2>&1 | tee tests.log
           grep -q 'test result ok' tests.log
 
-      - uses: ./.github/actions/mtest
-        if: always()
-
-      - name: The runs, reported
-        if: always()
-        run: |
-          [ -n "${MTEST:-}" ] && [ -f tests/target/mtest/index.ndjson ] || { echo "no run was kept"; exit 0; }
-          store="$(cygpath -u "$RUNNER_TEMP" 2> /dev/null || printf '%s' "$RUNNER_TEMP")/mtest-store"; mkdir -p "$store"
-          here="$PWD"
-          ( cd "$store" && "$MTEST" store import --from "$here/tests/target/mtest" )
-          ( cd "$store" && "$MTEST" report --format md --group "$GITHUB_RUN_ID" ) >> "$GITHUB_STEP_SUMMARY" || true
-
-      - uses: actions/upload-artifact@v4
+      # The runs `mcpp test` kept, reported and kept for the report job.
+      - uses: ./.github/actions/test-report
         if: always()
         with:
           name: mtest-${{ github.job }}-${{ strategy.job-index }}
-          path: ${{ runner.temp }}/mtest-store/.mtest
-          include-hidden-files: true
-          if-no-files-found: ignore
-          retention-days: 7
 
   # EVERY JOB'S RUNS AS ONE REPORT (`mtest ci report`, the workflow run's group).
   report:
@@ -745,7 +712,7 @@ jobs:
             found=1
           done
           if [ "$found" = 0 ]; then echo "no job kept a run" >> "$GITHUB_STEP_SUMMARY"; exit 0; fi
-          "$MTEST" ci report --out "$RUNNER_TEMP/tests.md"
+          "$MTEST" ci report --group "$GITHUB_RUN_ID" --out "$RUNNER_TEMP/tests.md"
           cat "$RUNNER_TEMP/tests.md" >> "$GITHUB_STEP_SUMMARY"
 
   # ── AN OK IMAGE (`<arch>-openkal`, openkal SPEC clause 12) ─────────────────

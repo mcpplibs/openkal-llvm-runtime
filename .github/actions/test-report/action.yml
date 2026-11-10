@@ -1,0 +1,47 @@
+name: test-report
+description: >
+  The runs `mcpp test` kept in the mtest store's form: taken into one store of
+  the job, written as one Markdown report of this workflow run's runs into the
+  job's summary, and kept as an artifact for the report over every job of the
+  workflow run (ci.yml `report`).
+inputs:
+  name:
+    description: the artifact's name, unique in the workflow run
+    required: true
+  stores:
+    description: the stores `mcpp test` kept in this job, relative to the workspace, separated by spaces
+    required: false
+    default: tests/target/mtest
+runs:
+  using: composite
+  steps:
+    - uses: ./.github/actions/mtest
+    - shell: bash
+      env:
+        STORES: ${{ inputs.stores }}
+      run: |
+        set -euo pipefail
+        # The POSIX spelling of the runner's directories for this shell; the
+        # artifact's path below is the runner's own.
+        temp="$(cygpath -u "$RUNNER_TEMP" 2> /dev/null || printf '%s' "$RUNNER_TEMP")"
+        workspace="$(cygpath -u "$GITHUB_WORKSPACE" 2> /dev/null || printf '%s' "$GITHUB_WORKSPACE")"
+        job="$temp/mtest-job"
+        mkdir -p "$job"
+        taken=0
+        for store in $STORES; do
+          [ -f "$workspace/$store/index.ndjson" ] || continue
+          (cd "$job" && "$MTEST" store import --from "$workspace/$store")
+          taken=1
+        done
+        if [ "$taken" = 0 ]; then echo "mcpp test kept no run here"; exit 0; fi
+        (cd "$job" && "$MTEST" report --format md --group "$GITHUB_RUN_ID") >> "$GITHUB_STEP_SUMMARY" \
+          || echo "::warning::no run of this workflow run in the store"
+        echo "MTEST_JOB_STORE=$RUNNER_TEMP/mtest-job/.mtest" >> "$GITHUB_ENV"
+    - uses: actions/upload-artifact@v4
+      if: env.MTEST_JOB_STORE != ''
+      with:
+        name: ${{ inputs.name }}
+        path: ${{ env.MTEST_JOB_STORE }}
+        include-hidden-files: true
+        if-no-files-found: ignore
+        retention-days: 7
