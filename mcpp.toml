@@ -1,7 +1,7 @@
 [package]
 namespace   = "mcpplibs"
 name        = "openkal-llvm-runtime"
-version     = "0.20.0"
+version     = "0.20.1"
 description = "LLVM's C++ runtime libraries — libc++, libc++abi and libunwind — configured for openkal-musl rather than for a host C library."
 license     = "Apache-2.0"
 authors     = ["mcpplibs"]
@@ -511,6 +511,26 @@ sources = [
   "!llvm/libcxx/src/filesystem/int128_builtins.cpp",
 ]
 
+# FREEBSD ABOVE openkal-musl (`<arch>-freebsd-musl', 0.20.1) TAKES THE SAME
+# SELECTION AND KEEPS `clear_cache.c': nothing beneath a program of these rows
+# supplies `__clear_cache', which `__builtin___clear_cache' calls on aarch64 (a
+# program that writes code and runs it --- the conformance suite's `exec'
+# observations --- stopped at `undefined symbol: __clear_cache'), and the file is
+# the processor's own instructions there, with no call into the system.
+[target.'cfg(os = "freebsd")'.build]
+sources = [
+  "llvm/compiler-rt/lib/builtins/*.c",
+  "!llvm/compiler-rt/lib/builtins/atomic*.c",
+  "!llvm/compiler-rt/lib/builtins/emutls.c",
+  "!llvm/compiler-rt/lib/builtins/enable_execute_stack.c",
+  "!llvm/compiler-rt/lib/builtins/eprintf.c",
+  "!llvm/compiler-rt/lib/builtins/gcc_personality_v0.c",
+  "!llvm/compiler-rt/lib/builtins/crtbegin.c",
+  "!llvm/compiler-rt/lib/builtins/crtend.c",
+  "!llvm/compiler-rt/lib/builtins/os_version_check.c",
+  "!llvm/libcxx/src/filesystem/int128_builtins.cpp",
+]
+
 # THE x87 ROUTINES ARE AN ARCHITECTURE PROPERTY, AND THE BLOCK ABOVE SORTS
 # BY OPERATING SYSTEM.
 #
@@ -530,7 +550,7 @@ sources = [
 # today, so the exclusion looked like an OS property. It is not. Sorting on the
 # axis the fact actually lives on is what makes a second architecture work
 # without a third copy of the list.
-[target.'cfg(all(any(os = "linux", os = "openkal"), not(arch = "x86_64")))'.build]
+[target.'cfg(all(any(os = "linux", os = "openkal", os = "freebsd"), not(arch = "x86_64")))'.build]
 sources = [
   "!llvm/compiler-rt/lib/builtins/*xf*.c",
   "!llvm/compiler-rt/lib/builtins/*xc3.c",
