@@ -6,7 +6,7 @@ C library.
 
 ```toml
 [dependencies]
-openkal-llvm-runtime = "0.20.0"
+openkal-llvm-runtime = "0.20.1"
 ```
 
 > **Engine floor (mcpp 2026.11.2.1):** 0.17.0 is built over openkal-musl 0.26.0,
@@ -329,6 +329,14 @@ for an image. Linux confinement requires Landlock ABI 3 to enforce read-only
 grants against raw file truncation. The runtime implementation is unchanged.
 
 ## OpenKal 0.25 dependency group
+
+Runtime 0.20.1 builds for FreeBSD above openkal-musl (`x86_64-freebsd-musl`,
+`aarch64-freebsd-musl`): the selection of compiler-rt is Linux's and the ok
+image's, and `clear_cache.c` is kept, since nothing beneath a program of those
+rows supplies `__clear_cache`. The rows need openkal-musl 0.29.1, whose
+FreeBSD port offers `elf_aux_info`, which compiler-rt's aarch64 `cpu_model`
+calls there. The OpenKal conformance suite built so holds every observation in
+a FreeBSD virtual machine.
 
 Runtime 0.20.0 is built over openkal-musl `^0.29.0` and the OpenKal 0.25
 implementations beneath it (Linux 0.26, macOS 0.23, Windows 0.21, OpenSBI 0.9).
