@@ -34,7 +34,7 @@ env:
   MCPP_VERSION: 2026.11.9.1
   XLINGS_VERSION: v2026.10.26.1
   # okrun is built from openkal-image, whose openkal-run states its own floor.
-  OKRUN_MCPP_VERSION: 2026.11.9.1
+  OKRUN_MCPP_VERSION: 2026.11.10.1
   XLINGS_NON_INTERACTIVE: '1'
 
 jobs:
