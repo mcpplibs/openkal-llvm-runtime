@@ -113,11 +113,11 @@ extern char __exidx_end;
 // `_WIN32` on this line is the OUTER question --- "is this even the PE
 // branch" --- and it is an identity question, not a platform-service one;
 // the service question is the `OPENKAL` that already decides what is INSIDE
-// the branch, just below. `OPENKAL_TARGET_WINDOWS` (mcpp.toml) is what
+// the branch, just below. `OPENKAL_TARGET_PE` (mcpp.toml) is what
 // answers the outer one now that `_WIN32` does not reach this target. See
 // `config.h` for the fuller account.
 #elif defined(_LIBUNWIND_SUPPORT_DWARF_UNWIND) &&                              \
-    (defined(_WIN32) || defined(OPENKAL_TARGET_WINDOWS))
+    (defined(_WIN32) || defined(OPENKAL_TARGET_PE))
 // ─── openkal ─── END
 
 // ─── openkal ─── BEGIN
@@ -602,7 +602,7 @@ inline bool LocalAddressSpace::findUnwindSections(
 // The same outer identity question as the declaration above, answered the
 // same way.
 #elif defined(_LIBUNWIND_SUPPORT_DWARF_UNWIND) &&                              \
-    (defined(_WIN32) || defined(OPENKAL_TARGET_WINDOWS))
+    (defined(_WIN32) || defined(OPENKAL_TARGET_PE))
 // ─── openkal ─── END
 // ─── openkal ─── BEGIN
 #if defined(OPENKAL)

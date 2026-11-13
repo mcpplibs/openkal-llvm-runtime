@@ -127,10 +127,10 @@ DEFINE_LIBUNWIND_FUNCTION(__unw_getcontext)
 # table for this target), so a caller here still passes `thread_state` in
 # `%rcx`, and reading it out of `%rdi` instead is what a SysV callee does.
 # `_WIN64` is gone from this target along with `_WIN32`;
-# `OPENKAL_TARGET_WINDOWS` (mcpp.toml) is this package's own manifest
+# `OPENKAL_TARGET_PE` (mcpp.toml) is this package's own manifest
 # stating it, exactly as `okm_setjmp.S` states the equivalent fact for
 # `jmp_buf` --- this file is not installed, so it can read it.
-#if defined(_WIN64) || defined(OPENKAL_TARGET_WINDOWS)
+#if defined(_WIN64) || defined(OPENKAL_TARGET_PE)
 # ─── openkal ─── END
 #define PTR %rcx
 #define TMP %rdx
@@ -169,7 +169,7 @@ DEFINE_LIBUNWIND_FUNCTION(__unw_getcontext)
 # caller's to preserve. On Win64 they are not, so this file must save them;
 # on SysV the callee owns none of them and there is nothing here to save.
 # Same target, same answer as above.
-#if defined(_WIN64) || defined(OPENKAL_TARGET_WINDOWS)
+#if defined(_WIN64) || defined(OPENKAL_TARGET_PE)
 # ─── openkal ─── END
   movdqu %xmm0,176(PTR)
   movdqu %xmm1,192(PTR)

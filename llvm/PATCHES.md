@@ -172,7 +172,7 @@ openkal-musl 的 `[c-abi] presents = "posix"` 把它和 `_WIN32`、`__MINGW32__`
 分支,保存例程仍旧往 `%rdi` 写,而 Win64 调用约定下调用者实际把指针传在 `%rcx`。表现
 只在运行期:第一次 `throw` 就在 `unw_getcontext` 里对一个由错误寄存器读出的地址(测得
 是空指针)写内存。已按 `libunwind` 已有的同一判据处理:内部四处(两个 `.S`、
-`Registers.hpp`)换成 `OPENKAL_TARGET_WINDOWS`;`__libunwind_config.h` 已安装(经
+`Registers.hpp`)换成 `OPENKAL_TARGET_PE`;`__libunwind_config.h` 已安装(经
 `unwind.h` / `libunwind.h` 公开可达),换成 `__CYGWIN__`。下一次改这棵树,完整的检查是
 `grep -rn "_WIN32\|_WIN64\|__MINGW32__\|__MINGW64__"`,不是只 grep 第一个。
 
@@ -197,7 +197,7 @@ openkal-musl 的 `[c-abi] presents = "posix"` 把它和 `_WIN32`、`__MINGW32__`
 三支全部落空,直接 `#error`。
 
 它**不是**已安装的头,只由本包自己的构建编译,所以按本文件的规矩用私有 define
-`OPENKAL_TARGET_WINDOWS`——而 `__libunwind_config.h` 反过来用 `__MCPP_TARGET_WINDOWS__`,
+`OPENKAL_TARGET_PE`——而 `__libunwind_config.h` 反过来用 `__MCPP_TARGET_WINDOWS__`,
 因为它**是**已安装的。两者读不同的宏,回答同一个关于同一个目标的问题,这正是下面那一节
 要求的性质。
 
@@ -223,7 +223,7 @@ extern "C" { int __cxa_thread_atexit(Dtor, void*, void*) throw(); }
 `doctest` 与 `spdlog` 两个成员在 `x86_64-windows-gnu` 上停在
 `ld.lld: error: undefined symbol: __cxa_thread_atexit`。
 
-这个文件**不是**已安装的头,所以按本文的规矩用私有 define `OPENKAL_TARGET_WINDOWS`。
+这个文件**不是**已安装的头,所以按本文的规矩用私有 define `OPENKAL_TARGET_PE`。
 
 ### 第二层:`__thread` 在 emutls 下活不过 key 析构
 

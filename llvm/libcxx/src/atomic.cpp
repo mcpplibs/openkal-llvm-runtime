@@ -129,8 +129,28 @@ extern "C" {
 // the specification says they are. openkal derives them from the compiler for
 // exactly this reason: a consumer can restate them without a header and cannot
 // get a different type than the implementation was built with.
+#  if OPENKAL_HAS_TASK == 2
+// ⚠️ AN OK IMAGE ASKS AT RUN TIME (OPENKAL_HAS_TASK == 2, 0.20.3). The image is run by a loader on
+// the implementation of whatever machine runs it, which a firmware may be: the two names are
+// imported weakly (SPEC 12.4: bound where provided, zero otherwise, and kept out of the image's
+// requirements), and where they are zero the wait is the baseline's --- it returns, and the caller
+// polls --- as on a machine with one execution context (the `== 0` configuration).
+__attribute__((__weak__))
+#  endif
 int kal_task_wait(const unsigned int* __word, unsigned int __expected, unsigned long long __timeout_ns);
+#  if OPENKAL_HAS_TASK == 2
+__attribute__((__weak__))
+#  endif
 int kal_task_wake(const unsigned int* __word, __okl_uptr __count, __okl_uptr* __woken);
+}
+
+// Whether the suspension primitive is bound: always where the implementation is known to have it.
+static inline bool __okl_task_bound() {
+#  if OPENKAL_HAS_TASK == 2
+  return kal_task_wait != nullptr && kal_task_wake != nullptr;
+#  else
+  return true;
+#  endif
 }
 
 template <std::size_t _Size, class MaybeTimeout>
@@ -142,6 +162,8 @@ static void __platform_wait_on_address(void const* __ptr, void const* __val, May
   // reason: a wait that never times out cannot notice a wake it raced with.
   // Zero means "no timeout" to openkal, so the default is stated rather than
   // passed through.
+  if (!__okl_task_bound())
+    return;
   unsigned long long __ns = 2'000'000'000ull;
   if constexpr (!is_same_v<MaybeTimeout, NoTimeout>) {
     __ns = static_cast<unsigned long long>(maybe_timeout_ns);
@@ -157,6 +179,8 @@ static void __platform_wake_by_address(void const* __ptr, bool __notify_one) {
   // ⚠️ `-1` for "all", which is openkal's spelling of what the other branches
   // write as `INT_MAX`. The count is a `kal_uintptr`, so the maximum is stated
   // as the wrap rather than as a header's constant.
+  if (!__okl_task_bound())
+    return;
   __okl_uptr __woken = 0;
   kal_task_wake(reinterpret_cast<const unsigned int*>(__ptr),
                 __notify_one ? __okl_uptr(1) : __okl_uptr(-1),
