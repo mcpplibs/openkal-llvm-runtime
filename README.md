@@ -6,7 +6,7 @@ C library.
 
 ```toml
 [dependencies]
-openkal-llvm-runtime = "0.20.2"
+openkal-llvm-runtime = "0.20.3"
 ```
 
 > **Engine floor (mcpp 2026.11.2.1):** 0.17.0 is built over openkal-musl 0.26.0,
@@ -327,6 +327,19 @@ system's libstdc++ and glibc:
 openkal-musl 0.27.3 selects openkal-linux 0.24.1 on Linux and openkal-ld 0.4.3
 for an image. Linux confinement requires Landlock ABI 3 to enforce read-only
 grants against raw file truncation. The runtime implementation is unchanged.
+
+## An image asks for the suspension primitive (0.20.3)
+
+In an ok image `std::atomic::wait` and `notify` import `kal_task_wait` and
+`kal_task_wake` weakly (`OPENKAL_HAS_TASK=2`, SPEC 12.4): an image is run by a
+loader on the implementation of whatever machine runs it, a firmware among them.
+Where the two names are bound the wait suspends as before; where they are not,
+the wait returns and the caller polls, as in the configuration without
+`openkal.task`. The image's requirements then name no `openkal.task` on this
+library's account. With openkal-musl 0.29.6, which does the same for its own
+optional interfaces, an image that uses neither files nor processes nor threads
+requires only `openkal.abort`, `openkal.env`, `openkal.memory`, `openkal.stream`
+and `openkal.time`. The libraries built for a known implementation are unchanged.
 
 ## i686 (0.20.2)
 

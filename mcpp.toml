@@ -1,7 +1,7 @@
 [package]
 namespace   = "mcpplibs"
 name        = "openkal-llvm-runtime"
-version     = "0.20.2"
+version     = "0.20.3"
 description = "LLVM's C++ runtime libraries — libc++, libc++abi and libunwind — configured for openkal-musl rather than for a host C library."
 license     = "Apache-2.0"
 authors     = ["mcpplibs"]
@@ -578,8 +578,13 @@ sources = [
 # without this define the ok image was not one of them: every image holding a
 # `thread_local` with a destructor was refused by `okld check` for the undefined
 # symbol (measured building clangd as an ok image, 2026-10-29).
-cflags   = ["-DOPENKAL_TARGET_IMAGE=1"]
-cxxflags = ["-DOPENKAL_TARGET_IMAGE=1"]
+#
+# AND THE SUSPENSION PRIMITIVE IS ASKED AT RUN TIME (0.20.3): an image is run on the implementation
+# of whatever machine runs it, which a firmware may be. `atomic.cpp` imports `kal_task_wait` and
+# `kal_task_wake` weakly there and waits as the baseline does where they are not bound; the image's
+# requirements then name no `openkal.task` for them (openkal-musl 0.29.6 does the same for its own).
+cflags   = ["-DOPENKAL_TARGET_IMAGE=1", "-UOPENKAL_HAS_TASK", "-DOPENKAL_HAS_TASK=2"]
+cxxflags = ["-DOPENKAL_TARGET_IMAGE=1", "-UOPENKAL_HAS_TASK", "-DOPENKAL_HAS_TASK=2"]
 
 [target.'cfg(windows)'.build]
 # WHICH TARGET THIS IS, STATED HERE RATHER THAN READ OFF `_WIN32`.
