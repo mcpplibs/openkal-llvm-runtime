@@ -364,7 +364,9 @@ differences. compiler-rt's `emutls.c` is built: the row compiles with
 nothing else answers `__emutls_get_address` (on Linux the access is the thread
 register's, and in an ok image openkal-musl answers it). And the `__bf16`
 conversions stay out: the row's processor is the Pentium (`-march=i586`), which
-has no SSE2.
+has no SSE2. The same holds for `i686-openkal`, the ok image of i386, which
+openkal-platform 0.28.0 compiles for the Pentium too; `i686-linux-musl` keeps the
+toolchain's processor and the conversions.
 
 ## i686 (0.20.2)
 
