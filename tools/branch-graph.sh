@@ -39,19 +39,47 @@ branch="${1:-}"
 root="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 cd "$root"
 
+# Whether VERSION satisfies a caret RANGE (^a.b.c: below 1, the same minor
+# version; from 1, the same major version; never below a.b.c).
+in_range() {
+    local version="$1" floor="${2#^}"
+    local vM vm vp fM fm fp
+    IFS=. read -r vM vm vp <<< "$version"
+    IFS=. read -r fM fm fp <<< "$floor"
+    [ "$vM" = "$fM" ] || return 1
+    if [ "$fM" = 0 ]; then [ "$vm" = "$fm" ] && [ "$vp" -ge "$fp" ]; return; fi
+    [ "$vm" -gt "$fm" ] || { [ "$vm" = "$fm" ] && [ "$vp" -ge "$fp" ]; }
+}
+
 # Clones a repository of this ecosystem, preferring the branch under test when
-# that repository has one of the same name.
+# that repository has one of the same name. Without one, the default branch is
+# taken if its version is within RANGE, the range the C library states for it;
+# a default branch that has moved to a later line than the family's (openkal-
+# windows 0.22 while the family names ^0.21.1, and mcpplibs.os bounds it below
+# 0.22) is replaced by the newest release within the range, so the graph is one
+# the resolver accepts.
 fetch() {
-    local repo="$1" dir="$2"
+    local repo="$1" dir="$2" range="${3:-}"
     rm -rf "$dir"
     git clone --quiet "https://github.com/mcpplibs/$repo.git" "$dir"
     if git -C "$dir" rev-parse --verify --quiet "origin/$branch" > /dev/null; then
         git -C "$dir" checkout --quiet "origin/$branch"
         printf '  %-22s %s %s\n' "$repo" "$branch" "$(git -C "$dir" rev-parse --short HEAD)"
-    else
+        return
+    fi
+    local version
+    version="$(sed -n 's/^version[[:space:]]*=[[:space:]]*"\([^"]*\)".*/\1/p' "$dir/mcpp.toml" | head -1)"
+    if [ -z "$range" ] || in_range "$version" "$range"; then
         printf '  %-22s default branch %s (it has no %s)\n' \
             "$repo" "$(git -C "$dir" rev-parse --short HEAD)" "$branch"
+        return
     fi
+    local tag
+    tag="$(git -C "$dir" tag --sort=-v:refname | while read -r t; do
+               in_range "${t#v}" "$range" && { echo "$t"; break; }; done)"
+    [ -n "$tag" ] || { echo "::error::$repo has no release within $range (its default branch is $version)"; exit 1; }
+    git -C "$dir" checkout --quiet "$tag"
+    printf '  %-22s release %s, within %s (its default branch is %s)\n' "$repo" "$tag" "$range" "$version"
 }
 
 # In-place editing that both GNU and BSD sed perform identically.
@@ -80,7 +108,8 @@ manifests=(mcpp.toml .musl/mcpp.toml)
 # The first was fixed by naming it, and the second appeared. A list written by
 # hand is a list that is one entry short, so the set is read out of the manifest.
 for backend in $(grep -oE '^openkal-[a-z]+ = \{ version' .musl/mcpp.toml | cut -d' ' -f1); do
-    fetch "$backend" ".$backend"
+    range="$(sed -n "s/^$backend = { version = \"\([^\"]*\)\".*/\1/p" .musl/mcpp.toml | head -1)"
+    fetch "$backend" ".$backend" "$range"
 
     # The backend reaches the specification too, by whatever form its own
     # manifest uses. From <root>/.<backend>/ the specification is ../.spec.
