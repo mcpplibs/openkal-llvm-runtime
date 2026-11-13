@@ -1,7 +1,7 @@
 [package]
 namespace   = "mcpplibs"
 name        = "openkal-llvm-runtime"
-version     = "0.20.1"
+version     = "0.20.2"
 description = "LLVM's C++ runtime libraries — libc++, libc++abi and libunwind — configured for openkal-musl rather than for a host C library."
 license     = "Apache-2.0"
 authors     = ["mcpplibs"]
@@ -496,7 +496,7 @@ sources = [
 [target.'cfg(any(os = "linux", os = "openkal"))'.build]
 sources = [
   "llvm/compiler-rt/lib/builtins/*.c",
-  "!llvm/compiler-rt/lib/builtins/atomic*.c",
+  "!llvm/compiler-rt/lib/builtins/atomic_*.c",
   "!llvm/compiler-rt/lib/builtins/clear_cache.c",
   "!llvm/compiler-rt/lib/builtins/emutls.c",
   "!llvm/compiler-rt/lib/builtins/enable_execute_stack.c",
@@ -550,10 +550,23 @@ sources = [
 # today, so the exclusion looked like an OS property. It is not. Sorting on the
 # axis the fact actually lives on is what makes a second architecture work
 # without a third copy of the list.
-[target.'cfg(all(any(os = "linux", os = "openkal", os = "freebsd"), not(arch = "x86_64")))'.build]
+[target.'cfg(all(any(os = "linux", os = "openkal", os = "freebsd"), not(arch = "x86_64"), not(arch = "i686")))'.build]
 sources = [
   "!llvm/compiler-rt/lib/builtins/*xf*.c",
   "!llvm/compiler-rt/lib/builtins/*xc3.c",
+]
+
+# THE GENERIC ATOMICS ARE A THIRTY-TWO BIT WORD'S (i686; openkal 0.25.1, clause
+# 5.5). A sixty-four bit atomic on an object the compiler cannot prove eight-byte
+# aligned --- an `int64_t` field of a structure, which i386 aligns to four --- is
+# the call `__atomic_load' rather than an instruction; the embedded allocator's
+# statistics make such loads (measured: `undefined symbol: __atomic_load',
+# i686-linux-musl). `atomic.c' answers them with its own locks and calls nothing
+# of the system. Where the word is sixty-four bits nothing calls it, and it stays
+# out, as before.
+[target.'cfg(all(any(os = "linux", os = "openkal"), not(arch = "i686")))'.build]
+sources = [
+  "!llvm/compiler-rt/lib/builtins/atomic.c",
 ]
 
 [target.'cfg(os = "openkal")'.build]

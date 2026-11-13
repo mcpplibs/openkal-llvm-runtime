@@ -6,7 +6,7 @@ C library.
 
 ```toml
 [dependencies]
-openkal-llvm-runtime = "0.20.1"
+openkal-llvm-runtime = "0.20.2"
 ```
 
 > **Engine floor (mcpp 2026.11.2.1):** 0.17.0 is built over openkal-musl 0.26.0,
@@ -327,6 +327,22 @@ system's libstdc++ and glibc:
 openkal-musl 0.27.3 selects openkal-linux 0.24.1 on Linux and openkal-ld 0.4.3
 for an image. Linux confinement requires Landlock ABI 3 to enforce read-only
 grants against raw file truncation. The runtime implementation is unchanged.
+
+## i686 (0.20.2)
+
+Built for `i686-linux-musl` above openkal-musl and openkal-linux on i386
+(openkal 0.25.1, clause 5.5), the selection of compiler-rt differs from the
+sixty-four bit one in two files. The x87 routines (`*xf*.c`, `*xc3.c`, the 80-bit
+`long double`) are kept, as on x86_64: the type is real on i386 too. And
+`atomic.c` is compiled: a sixty-four bit atomic on an object the compiler cannot
+prove eight-byte aligned --- an `int64_t` field of a structure, which i386 aligns
+to four --- is the call `__atomic_load` rather than an instruction, and the
+embedded allocator's statistics make such loads (measured: `undefined symbol:
+__atomic_load`). It takes its own locks and calls nothing of the system. Measured
+locally above the family's i386 branches: a C++23 program with `import std`, an
+exception, four `std::jthread`s, `std::format` of sixty-four bit values and a
+file stream ran, and the openkal conformance suite held every observation it
+made (407, none did not, the five not observed being x86_64's five).
 
 ## OpenKal 0.25 dependency group
 
