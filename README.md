@@ -341,6 +341,20 @@ optional interfaces, an image that uses neither files nor processes nor threads
 requires only `openkal.abort`, `openkal.env`, `openkal.memory`, `openkal.stream`
 and `openkal.time`. The libraries built for a known implementation are unchanged.
 
+## UEFI, and the PE container (0.20.3)
+
+Every question this package asked of Windows was a question about PE: the
+compiler-rt sources of the container, emulated TLS, libunwind's register record
+and its search for the unwind tables. They are now selected by
+`cfg(object-format = "pe")` (mcpp 2026.11.13.1) and the private define
+`OPENKAL_TARGET_PE`, so `x86_64-uefi`, a platform's PE row, is served as Windows
+is. `__libunwind_config.h`, which a consumer's compile reads without this
+package's defines, learns the container from `port/include-pe/__openkal_target_pe.h`,
+a directory on the PE rows' include line alone. Where the implementation beneath
+states its interfaces and `openkal.task` is not among them (openkal-uefi),
+`OPENKAL_HAS_TASK` is 0 by `cfg(not(interface = "openkal.task"))`. This release
+requires mcpp 2026.11.13.1.
+
 ## i686 (0.20.2)
 
 Built for `i686-linux-musl` above openkal-musl and openkal-linux on i386

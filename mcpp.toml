@@ -6,6 +6,9 @@ description = "LLVM's C++ runtime libraries — libc++, libc++abi and libunwind 
 license     = "Apache-2.0"
 authors     = ["mcpplibs"]
 repo        = "https://github.com/mcpplibs/openkal-llvm-runtime"
+# 2026.11.13.1: `cfg(object-format = "pe")`, which selects what this package
+# needs on every PE row (Windows, UEFI) rather than on Windows alone.
+mcpp        = ">=2026.11.13.1"
 
 # The language level of this package's own sources. libc++, libc++abi and
 # libunwind are written for C++23 and upstream compiles them at that level,
@@ -586,7 +589,7 @@ sources = [
 cflags   = ["-DOPENKAL_TARGET_IMAGE=1", "-UOPENKAL_HAS_TASK", "-DOPENKAL_HAS_TASK=2"]
 cxxflags = ["-DOPENKAL_TARGET_IMAGE=1", "-UOPENKAL_HAS_TASK", "-DOPENKAL_HAS_TASK=2"]
 
-[target.'cfg(windows)'.build]
+[target.'cfg(object-format = "pe")'.build]
 # WHICH TARGET THIS IS, STATED HERE RATHER THAN READ OFF `_WIN32`.
 #
 # `openkal-musl`'s `[c-abi] presents = "posix"` leaves `_WIN32` (and
@@ -605,8 +608,16 @@ cxxflags = ["-DOPENKAL_TARGET_IMAGE=1", "-UOPENKAL_HAS_TASK", "-DOPENKAL_HAS_TAS
 # block above records: it decides what a `throw` COMPILES INTO, so it is true of
 # the graph rather than of this package. mcpp derives it; see
 # `graph_runtime_compile_flags`.
-cflags   = ["-DOPENKAL_TARGET_WINDOWS=1"]
-cxxflags = ["-DOPENKAL_TARGET_WINDOWS=1"]
+#
+# THE CONTAINER, NOT THE SYSTEM (0.20.3). Every question here is "is this PE":
+# the rows are Windows's and UEFI's (`x86_64-uefi', a platform's row), so the
+# section is selected by `object-format = "pe"' (mcpp 2026.11.13.1) and the
+# define is OPENKAL_TARGET_PE. `port/include-pe' carries the same fact to an
+# installed header (`__libunwind_config.h'), which a consumer's compile reads
+# without this package's defines.
+cflags   = ["-DOPENKAL_TARGET_PE=1"]
+cxxflags = ["-DOPENKAL_TARGET_PE=1"]
+include_dirs = ["port/include-pe"]
 sources = [
   "!llvm/libcxx/src/filesystem/int128_builtins.cpp",
   "llvm/compiler-rt/lib/builtins/*.c",
@@ -793,6 +804,15 @@ sources = [
   "!llvm/compiler-rt/lib/builtins/*bf*.c",
 ]
 
+
+# AND WHERE THE IMPLEMENTATION BENEATH STATES WHAT IT PROVIDES, IT IS ASKED
+# (0.20.3, mcpp 2026.11.13.1 `cfg(interface = ...)'), as openkal-musl asks for
+# OKM_HAS_TASK: a firmware's implementation (openkal-uefi) has one context and
+# no `openkal.task'. A bare machine is answered above and an ok image at run
+# time; one that states no list provides every interface.
+[target.'cfg(all(not(os = "openkal"), not(os = "none"), not(interface = "openkal.task")))'.build]
+cflags   = ["-UOPENKAL_HAS_TASK", "-DOPENKAL_HAS_TASK=0"]
+cxxflags = ["-UOPENKAL_HAS_TASK", "-DOPENKAL_HAS_TASK=0"]
 [build]
 cxxflags = [
   "-nostdinc++",
