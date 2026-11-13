@@ -584,8 +584,8 @@ sources = [
   "!llvm/compiler-rt/lib/builtins/atomic.c",
 ]
 
-# THE PENTIUM'S ROWS (0.20.3): i686-dos-musl and i686-openkal are compiled for the Pentium
-# (-march=i586), which the emulators that run DOS programs model and which has no SSE2, so
+# THE 486'S ROWS (0.20.3): i686-dos-musl and i686-openkal are compiled for the 486
+# (-march=i486; DOSBox Staging, which runs DOS programs, executes no CMPXCHG8B), which has no SSE2, so
 # `__bf16' does not exist there, as compiler-rt's own build finds (COMPILER_RT_HAS_BFLOAT16); its
 # conversions stay out (measured: `__bf16 is not supported on this target', fp_trunc.h).
 # i686-linux-musl keeps the toolchain's processor, which has SSE2, and the conversions.
