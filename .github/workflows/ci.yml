@@ -31,10 +31,11 @@ env:
   # 0.20.0: 2026.11.9.1, for the tests on the mtest library (a test file of
   # mtest's objects has no `main' from 2026.11.8.1, and `mcpp test' keeps its
   # runs in mtest's store from 2026.11.9.1).
-  MCPP_VERSION: 2026.11.9.1
+  # 0.20.3: 2026.11.13.1, which selects by `cfg(object-format)' and `cfg(interface)'.
+  MCPP_VERSION: 2026.11.13.1
   XLINGS_VERSION: v2026.10.26.1
   # okrun is built from openkal-image, whose openkal-run states its own floor.
-  OKRUN_MCPP_VERSION: 2026.11.10.1
+  OKRUN_MCPP_VERSION: 2026.11.13.1
   XLINGS_NON_INTERACTIVE: '1'
 
 jobs:
