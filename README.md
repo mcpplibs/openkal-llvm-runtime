@@ -355,6 +355,17 @@ states its interfaces and `openkal.task` is not among them (openkal-uefi),
 `OPENKAL_HAS_TASK` is 0 by `cfg(not(interface = "openkal.task"))`. This release
 requires mcpp 2026.11.13.1.
 
+## DOS (0.20.3; technical experiment only)
+
+`i686-dos-musl`, a platform's row over openkal-dos, takes the Linux selection of
+compiler-rt, the allocator of a bare machine (`malloc-mallocng`) and two
+differences. compiler-rt's `emutls.c` is built: the row compiles with
+`-femulated-tls`, there being no thread register the toolchain can address, and
+nothing else answers `__emutls_get_address` (on Linux the access is the thread
+register's, and in an ok image openkal-musl answers it). And the `__bf16`
+conversions stay out: the row's processor is the Pentium (`-march=i586`), which
+has no SSE2.
+
 ## i686 (0.20.2)
 
 Built for `i686-linux-musl` above openkal-musl and openkal-linux on i386

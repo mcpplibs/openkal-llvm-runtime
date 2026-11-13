@@ -230,12 +230,14 @@ cflags = ["-DDISABLE_AARCH64_FMV=1"]
 # the build and says so. mimalloc wherever memory is an environment's regions
 # or its allocator's chunks; musl's own on bare metal, where `kal_alloc' is the
 # fixed heap the firmware's build sized and mimalloc's arenas do not fit in it
-# (measured on OpenSBI: every request for an arena refused, ENOMEM). A
-# target's edge replaces a general one, so each states every feature.
-[target.'cfg(not(os = "none"))'.dependencies]
+# (measured on OpenSBI: every request for an arena refused, ENOMEM). DOS (0.20.3, openkal-dos;
+# technical experiment only) is the same: its DPMI memory is a machine's few megabytes, and
+# mimalloc's arenas are placed at 256 MiB. A target's edge replaces a general one, so each
+# states every feature.
+[target.'cfg(not(any(os = "none", os = "dos")))'.dependencies]
 openkal-musl = { version = "^0.29.0", default-features = false, features = ["posix", "malloc-mimalloc"] }
 
-[target.'cfg(os = "none")'.dependencies]
+[target.'cfg(any(os = "none", os = "dos"))'.dependencies]
 openkal-musl = { version = "^0.29.0", default-features = false, features = ["posix", "malloc-mallocng"] }
 
 [build]
@@ -495,13 +497,14 @@ sources = [
 # THE OK IMAGE (`<arch>-openkal', openkal SPEC clause 12) TAKES THE LINUX
 # SELECTION: the same C library above openkal, the same ELF object format and
 # the same calling convention per architecture; what differs is the loader that
-# binds the image's `kal_*' imports, which this package never names.
-[target.'cfg(any(os = "linux", os = "openkal"))'.build]
+# binds the image's `kal_*' imports, which this package never names. DOS (0.20.3, openkal-dos;
+# technical experiment only) takes it too: an ELF executable with its headers in its first
+# segment, which the stub loads.
+[target.'cfg(any(os = "linux", os = "openkal", os = "dos"))'.build]
 sources = [
   "llvm/compiler-rt/lib/builtins/*.c",
   "!llvm/compiler-rt/lib/builtins/atomic_*.c",
   "!llvm/compiler-rt/lib/builtins/clear_cache.c",
-  "!llvm/compiler-rt/lib/builtins/emutls.c",
   "!llvm/compiler-rt/lib/builtins/enable_execute_stack.c",
   "!llvm/compiler-rt/lib/builtins/eprintf.c",
   "!llvm/compiler-rt/lib/builtins/gcc_personality_v0.c",
@@ -513,6 +516,15 @@ sources = [
   # Supplying compiler-rt's makes them a pair: `duplicate symbol: __muloti4`.
   "!llvm/libcxx/src/filesystem/int128_builtins.cpp",
 ]
+
+# EMULATED THREAD-LOCAL STORAGE BELONGS TO THE ROW. On Linux a `thread_local' is the thread
+# register's, and an ok image's emulated accesses are answered by openkal-musl's image sources;
+# compiler-rt's `emutls.c' stays out of both. A DOS program has no thread register the toolchain
+# can address (the row compiles with `-femulated-tls'), and nothing else answers the call, so
+# `emutls.c' is built there --- on pthread keys and the allocator openkal-musl provides, as on PE
+# and Mach-O (measured: `undefined symbol: __emutls_get_address', cxa_exception_storage.cpp).
+[target.'cfg(any(os = "linux", os = "openkal"))'.build]
+sources = ["!llvm/compiler-rt/lib/builtins/emutls.c"]
 
 # FREEBSD ABOVE openkal-musl (`<arch>-freebsd-musl', 0.20.1) TAKES THE SAME
 # SELECTION AND KEEPS `clear_cache.c': nothing beneath a program of these rows
@@ -571,6 +583,13 @@ sources = [
 sources = [
   "!llvm/compiler-rt/lib/builtins/atomic.c",
 ]
+
+# DOS's processor (0.20.3): the i686-dos-musl row is compiled for the Pentium (-march=i586),
+# which the emulators that run DOS programs model and which has no SSE2, so `__bf16' does not
+# exist there, as compiler-rt's own build finds (COMPILER_RT_HAS_BFLOAT16); its conversions stay
+# out (measured: `__bf16 is not supported on this target', fp_trunc.h).
+[target.'cfg(os = "dos")'.build]
+sources = ["!llvm/compiler-rt/lib/builtins/*bf2.c"]
 
 [target.'cfg(os = "openkal")'.build]
 # WHICH TARGET THIS IS, FOR THE ONE FILE THAT MUST KNOW IT IS AN OK IMAGE.
