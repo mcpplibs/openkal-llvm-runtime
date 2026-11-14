@@ -171,7 +171,7 @@ namespace {
 // __cxa_thread_atexit`, measured on two members of the index's compatibility
 // suite (doctest, spdlog) on `x86_64-windows-gnu`.
 //
-// `OPENKAL_TARGET_WINDOWS` IS THIS PACKAGE'S OWN DEFINE, not the engine's
+// `OPENKAL_TARGET_PE` IS THIS PACKAGE'S OWN DEFINE, not the engine's
 // `__MCPP_TARGET_WINDOWS__`, and the difference is whose compile reads the
 // file: this one is a source of this package and is never installed, so a
 // package-private define reaches it. The same distinction chose the define in
@@ -182,9 +182,9 @@ namespace {
 //
 // THE OK IMAGE IS THE FOURTH SUCH TARGET. Its triple names no operating system,
 // so the guard reads `OPENKAL_TARGET_IMAGE`, which `mcpp.toml` states for
-// `cfg(os = "openkal")` as it states `OPENKAL_TARGET_WINDOWS` for PE.
+// `cfg(os = "openkal")` as it states `OPENKAL_TARGET_PE` for PE.
 #if defined(__linux__) || defined(__Fuchsia__) \
-    || defined(OPENKAL_TARGET_WINDOWS) || defined(OPENKAL_TARGET_IMAGE) \
+    || defined(OPENKAL_TARGET_PE) || defined(OPENKAL_TARGET_IMAGE) \
     || defined(__APPLE__)
 extern "C" {
 

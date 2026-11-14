@@ -29,6 +29,6 @@
  * does not --- and supplying the symbol is the correct response to that,
  * not a workaround for it: the C++ ABI always required something to supply
  * this, and on every other format something already did. */
-#if defined(OPENKAL_TARGET_WINDOWS)
+#if defined(OPENKAL_TARGET_PE)
 __attribute__((visibility("hidden"))) void *__dso_handle = &__dso_handle;
 #endif

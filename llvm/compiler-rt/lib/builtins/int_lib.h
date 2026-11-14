@@ -49,7 +49,7 @@
 #define SYMBOL_NAME(name) XSTR(__USER_LABEL_PREFIX__) #name
 
 // ─── openkal ─── BEGIN
-// `OPENKAL_TARGET_WINDOWS` joins this guard, and the alternative was a hard
+// `OPENKAL_TARGET_PE` joins this guard, and the alternative was a hard
 // `#error Unsupported target` a release from now.
 //
 // This target is PE, and PE takes the first branch: `__attribute__((alias))`
@@ -64,12 +64,12 @@
 //
 // The private define is the right name here, not `__mcpp_target_windows__`:
 // this file is NOT installed, it is compiled only by this package's own
-// build, and `mcpp.toml` carries `OPENKAL_TARGET_WINDOWS` to it in `cflags`.
+// build, and `mcpp.toml` carries `OPENKAL_TARGET_PE` to it in `cflags`.
 // That is the same rule the other five patches in this tree follow, and the
 // reason `__libunwind_config.h` does the opposite --- it IS installed. See
 // `llvm/PATCHES.md`.
 #if defined(__ELF__) || defined(__MINGW32__) || defined(__wasm__) ||           \
-    defined(_AIX) || defined(__CYGWIN__) || defined(OPENKAL_TARGET_WINDOWS)
+    defined(_AIX) || defined(__CYGWIN__) || defined(OPENKAL_TARGET_PE)
 // ─── openkal ─── END
 #define COMPILER_RT_ALIAS(name, aliasname) \
   COMPILER_RT_ABI __typeof(name) aliasname __attribute__((__alias__(#name)));

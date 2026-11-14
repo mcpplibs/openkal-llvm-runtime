@@ -52,7 +52,7 @@
 // `okm_setjmp.S` sizes `jmp_buf` for, and it is gone on this target along
 // with `_WIN32`. THIS HEADER IS INSTALLED (`llvm/libunwind/include/`, read
 // through `unwind.h` and `libunwind.h`, both public), so it cannot read
-// `OPENKAL_TARGET_WINDOWS` --- that is this package's own private build
+// `OPENKAL_TARGET_PE` --- that is this package's own private build
 // define (mcpp.toml) and an application calling `unw_getcontext` directly
 // against `unw_context_t` does not see it. `__MCPP_TARGET_WINDOWS__` is read
 // instead: mcpp states the target under its OWN name, target-wide, an
@@ -76,11 +76,19 @@
 // packages doing exactly that and reaching `#include <windows.h>`. It
 // answered this file's question only by accident.
 // `UnwindRegistersSave.S` writes exactly the record sized here and reads
-// `OPENKAL_TARGET_WINDOWS` rather than `__CYGWIN__`, because it is NOT
+// `OPENKAL_TARGET_PE` rather than `__CYGWIN__`, because it is NOT
 // installed --- compiled only by this package's own build, like
 // `okm_setjmp.S`. The two answer the same question about the same target
 // without reading the same macro, which is what has to hold; see that file.
-#  if defined(_WIN64) || defined(__MCPP_TARGET_WINDOWS__) || defined(__CYGWIN__)
+// 0.20.3: THE CONTAINER'S MARK, NOT A SYSTEM'S NAME. Every PE row presents
+// POSIX through the same substitution (Windows's and UEFI's alike), so the
+// record is the Microsoft x64 convention's on each; this package puts
+// `port/include-pe' on those rows' include line alone (mcpp.toml), which
+// carries the mark to a consumer's compile.
+#  if __has_include(<__openkal_target_pe.h>)
+#    include <__openkal_target_pe.h>
+#  endif
+#  if defined(_WIN64) || defined(OPENKAL_TARGET_PE) || defined(__MCPP_TARGET_WINDOWS__) || defined(__CYGWIN__)
 // ─── openkal ─── END
 #    define _LIBUNWIND_CONTEXT_SIZE 54
 #    ifdef __SEH__

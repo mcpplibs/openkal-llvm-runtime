@@ -352,15 +352,15 @@ private:
 // writes and `__libunwind_config.h` sizes `unw_context_t` for --- all three
 // have to agree, so all three read the target the same way. This file is
 // not installed (`llvm/libunwind/src/`, compiled only by this package's own
-// build), so it reads `OPENKAL_TARGET_WINDOWS` (mcpp.toml) as the assembly
+// build), so it reads `OPENKAL_TARGET_PE` (mcpp.toml) as the assembly
 // file does, rather than `__CYGWIN__` as the installed header does.
-#if defined(_WIN64) || defined(OPENKAL_TARGET_WINDOWS)
+#if defined(_WIN64) || defined(OPENKAL_TARGET_PE)
 // ─── openkal ─── END
     uint64_t __padding; // 16-byte align
 #endif
   };
   GPRs _registers;
-#if defined(_WIN64) || defined(OPENKAL_TARGET_WINDOWS)
+#if defined(_WIN64) || defined(OPENKAL_TARGET_PE)
   v128 _xmm[16];
 #endif
 };
@@ -579,7 +579,7 @@ inline bool Registers_x86_64::validVectorRegister(int regNum) const {
 // ─── openkal ─── BEGIN
 // Whether `_xmm` exists at all in this object, the same fact the struct
 // definition above reads the same way.
-#if defined(_WIN64) || defined(OPENKAL_TARGET_WINDOWS)
+#if defined(_WIN64) || defined(OPENKAL_TARGET_PE)
 // ─── openkal ─── END
   if (regNum < UNW_X86_64_XMM0)
     return false;
@@ -593,7 +593,7 @@ inline bool Registers_x86_64::validVectorRegister(int regNum) const {
 }
 
 inline v128 Registers_x86_64::getVectorRegister(int regNum) const {
-#if defined(_WIN64) || defined(OPENKAL_TARGET_WINDOWS)
+#if defined(_WIN64) || defined(OPENKAL_TARGET_PE)
   assert(validVectorRegister(regNum));
   return _xmm[regNum - UNW_X86_64_XMM0];
 #else
@@ -603,7 +603,7 @@ inline v128 Registers_x86_64::getVectorRegister(int regNum) const {
 }
 
 inline void Registers_x86_64::setVectorRegister(int regNum, v128 value) {
-#if defined(_WIN64) || defined(OPENKAL_TARGET_WINDOWS)
+#if defined(_WIN64) || defined(OPENKAL_TARGET_PE)
   assert(validVectorRegister(regNum));
   _xmm[regNum - UNW_X86_64_XMM0] = value;
 #else

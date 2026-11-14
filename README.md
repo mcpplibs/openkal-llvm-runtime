@@ -6,7 +6,7 @@ C library.
 
 ```toml
 [dependencies]
-openkal-llvm-runtime = "0.20.2"
+openkal-llvm-runtime = "0.20.3"
 ```
 
 > **Engine floor (mcpp 2026.11.2.1):** 0.17.0 is built over openkal-musl 0.26.0,
@@ -327,6 +327,46 @@ system's libstdc++ and glibc:
 openkal-musl 0.27.3 selects openkal-linux 0.24.1 on Linux and openkal-ld 0.4.3
 for an image. Linux confinement requires Landlock ABI 3 to enforce read-only
 grants against raw file truncation. The runtime implementation is unchanged.
+
+## An image asks for the suspension primitive (0.20.3)
+
+In an ok image `std::atomic::wait` and `notify` import `kal_task_wait` and
+`kal_task_wake` weakly (`OPENKAL_HAS_TASK=2`, SPEC 12.4): an image is run by a
+loader on the implementation of whatever machine runs it, a firmware among them.
+Where the two names are bound the wait suspends as before; where they are not,
+the wait returns and the caller polls, as in the configuration without
+`openkal.task`. The image's requirements then name no `openkal.task` on this
+library's account. With openkal-musl 0.29.6, which does the same for its own
+optional interfaces, an image that uses neither files nor processes nor threads
+requires only `openkal.abort`, `openkal.env`, `openkal.memory`, `openkal.stream`
+and `openkal.time`. The libraries built for a known implementation are unchanged.
+
+## UEFI, and the PE container (0.20.3)
+
+Every question this package asked of Windows was a question about PE: the
+compiler-rt sources of the container, emulated TLS, libunwind's register record
+and its search for the unwind tables. They are now selected by
+`cfg(object-format = "pe")` (mcpp 2026.11.13.1) and the private define
+`OPENKAL_TARGET_PE`, so `x86_64-uefi`, a platform's PE row, is served as Windows
+is. `__libunwind_config.h`, which a consumer's compile reads without this
+package's defines, learns the container from `port/include-pe/__openkal_target_pe.h`,
+a directory on the PE rows' include line alone. Where the implementation beneath
+states its interfaces and `openkal.task` is not among them (openkal-uefi),
+`OPENKAL_HAS_TASK` is 0 by `cfg(not(interface = "openkal.task"))`. This release
+requires mcpp 2026.11.13.1.
+
+## DOS (0.20.3; technical experiment only)
+
+`i686-dos-musl`, a platform's row over openkal-dos, takes the Linux selection of
+compiler-rt, the allocator of a bare machine (`malloc-mallocng`) and two
+differences. compiler-rt's `emutls.c` is built: the row compiles with
+`-femulated-tls`, there being no thread register the toolchain can address, and
+nothing else answers `__emutls_get_address` (on Linux the access is the thread
+register's, and in an ok image openkal-musl answers it). And the `__bf16`
+conversions stay out: the row's processor is the 486 (`-march=i486`; DOSBox
+Staging executes no CMPXCHG8B), which has no SSE2. The same holds for `i686-openkal`, the ok image of i386, which
+openkal-platform 0.28.0 compiles for the 486 too; `i686-linux-musl` keeps the
+toolchain's processor and the conversions.
 
 ## i686 (0.20.2)
 
