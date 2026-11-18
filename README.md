@@ -6,7 +6,7 @@ C library.
 
 ```toml
 [dependencies]
-openkal-llvm-runtime = "0.20.3"
+openkal-llvm-runtime = "0.20.4"
 ```
 
 > **Engine floor (mcpp 2026.11.2.1):** 0.17.0 is built over openkal-musl 0.26.0,
@@ -428,3 +428,14 @@ openkal-musl is the compatible range `^0.28.0`.
 Runtime 0.19.0 selects openkal-musl 0.28.0 and its matching OpenKal 0.24
 implementations. The C++ runtime surface and allocator feature selection
 remain unchanged.
+
+## The selections are by container and by statement, not by a list of systems (0.20.4)
+
+Three selections named systems, so a row a platform defines for a system this package
+does not know took none of them: the builtins (it was built with none: `undefined symbol:
+__divdi3`), the 486's exclusion of the `__bf16` conversions, and the allocator of the C
+library beneath. They now read what the row states. The builtins are the ELF rows' that
+state no selection of their own; the 486's exclusion is every i386 row's but Linux's; and
+musl's own allocator is taken wherever the implementation states no `openkal.random`,
+which mimalloc seeds its heaps from. Every row served before selects what it selected:
+the only implementation without `openkal.random` was DOS's, which was named.
