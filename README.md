@@ -6,7 +6,7 @@ C library.
 
 ```toml
 [dependencies]
-openkal-llvm-runtime = "0.20.3"
+openkal-llvm-runtime = "0.20.4"
 ```
 
 > **Engine floor (mcpp 2026.11.2.1):** 0.17.0 is built over openkal-musl 0.26.0,
@@ -428,3 +428,17 @@ openkal-musl is the compatible range `^0.28.0`.
 Runtime 0.19.0 selects openkal-musl 0.28.0 and its matching OpenKal 0.24
 implementations. The C++ runtime surface and allocator feature selection
 remain unchanged.
+
+## A system this package does not know (0.20.4)
+
+Three selections named the systems they applied to, so a row a platform defines for a
+system this package does not know took none of them, or the wrong one: it was built with
+no builtins (`undefined symbol: __divdi3`), kept the `__bf16` conversions the 486 has no
+type for, and took mimalloc, which asks the implementation beneath it for more than such a
+system may have. Each now names the exception and leaves the rest to the general case. The
+builtins are the ELF rows' that state no selection of their own; the 486's exclusion is
+every i386 row's but Linux's; mimalloc is taken on the systems it was measured on, and
+musl's own allocator, which asks for blocks of memory and nothing else, everywhere else.
+Every row served before selects what it selected. The conditions are the row's own words
+(system, architecture, container): a dependency edge is selected before the graph is
+resolved, so what the implementation provides cannot decide it.

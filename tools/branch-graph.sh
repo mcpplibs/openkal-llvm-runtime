@@ -39,16 +39,47 @@ branch="${1:-}"
 root="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 cd "$root"
 
-# Whether VERSION satisfies a caret RANGE (^a.b.c: below 1, the same minor
-# version; from 1, the same major version; never below a.b.c).
-in_range() {
-    local version="$1" floor="${2#^}"
+# Whether VERSION satisfies RANGE, in the two forms the manifests state: a caret
+# range (^a.b.c: below 1, the same minor version; from 1, the same major
+# version; never below a.b.c), or comparators separated by commas
+# (`>=0.10.0, <0.12.0'), each of which must hold.
+compare() {     # compare A B: prints -1, 0 or 1
+    local aM am ap bM bm bp
+    IFS=. read -r aM am ap <<< "$1"
+    IFS=. read -r bM bm bp <<< "$2"
+    local x y
+    for pair in "$aM:$bM" "${am:-0}:${bm:-0}" "${ap:-0}:${bp:-0}"; do
+        x="${pair%%:*}"; y="${pair##*:}"
+        if [ "$x" -lt "$y" ]; then echo -1; return; fi
+        if [ "$x" -gt "$y" ]; then echo 1; return; fi
+    done
+    echo 0
+}
+in_caret() {
+    local version="$1" floor="$2"
     local vM vm vp fM fm fp
     IFS=. read -r vM vm vp <<< "$version"
     IFS=. read -r fM fm fp <<< "$floor"
     [ "$vM" = "$fM" ] || return 1
     if [ "$fM" = 0 ]; then [ "$vm" = "$fm" ] && [ "$vp" -ge "$fp" ]; return; fi
     [ "$vm" -gt "$fm" ] || { [ "$vm" = "$fm" ] && [ "$vp" -ge "$fp" ]; }
+}
+in_range() {
+    local version="$1" range="$2" part bound order
+    local -a parts
+    IFS=, read -r -a parts <<< "$range"
+    for part in "${parts[@]}"; do
+        part="${part//[[:space:]]/}"
+        case "$part" in
+            ^*)  in_caret "$version" "${part#^}" || return 1 ;;
+            \>=*) bound="${part#>=}"; order="$(compare "$version" "$bound")"; [ "$order" != -1 ] || return 1 ;;
+            \<=*) bound="${part#<=}"; order="$(compare "$version" "$bound")"; [ "$order" != 1 ]  || return 1 ;;
+            \>*)  bound="${part#>}";  order="$(compare "$version" "$bound")"; [ "$order" = 1 ]   || return 1 ;;
+            \<*)  bound="${part#<}";  order="$(compare "$version" "$bound")"; [ "$order" = -1 ]  || return 1 ;;
+            =*)  [ "$(compare "$version" "${part#=}")" = 0 ] || return 1 ;;
+            *)   in_caret "$version" "$part" || return 1 ;;
+        esac
+    done
 }
 
 # Clones a repository of this ecosystem, preferring the branch under test when

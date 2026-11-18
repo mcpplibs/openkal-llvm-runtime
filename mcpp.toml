@@ -1,7 +1,7 @@
 [package]
 namespace   = "mcpplibs"
 name        = "openkal-llvm-runtime"
-version     = "0.20.3"
+version     = "0.20.4"
 description = "LLVM's C++ runtime libraries — libc++, libc++abi and libunwind — configured for openkal-musl rather than for a host C library."
 license     = "Apache-2.0"
 authors     = ["mcpplibs"]
@@ -234,10 +234,20 @@ cflags = ["-DDISABLE_AARCH64_FMV=1"]
 # technical experiment only) is the same: its DPMI memory is a machine's few megabytes, and
 # mimalloc's arenas are placed at 256 MiB. A target's edge replaces a general one, so each
 # states every feature.
-[target.'cfg(not(any(os = "none", os = "dos")))'.dependencies]
+# mimalloc IS TAKEN WHERE IT WAS MEASURED, AND musl's OWN EVERYWHERE ELSE (0.20.4). The
+# condition named the systems that take musl's own (`none', `dos'), so a row a platform
+# defines for a system this package does not know took mimalloc, which asks more of the
+# implementation beneath it than that system may have: a random source for its heaps
+# (`unable to use secure randomness'), arenas placed far apart, threads. musl's own asks for
+# blocks of `openkal.memory' and nothing else, so it is the allocator of a system nobody
+# measured, and a new system is not added to a list here. The systems named are the ones the
+# C library names an implementation for, less the two above. A dependency edge is selected
+# before the graph is resolved, so the condition is the row's own words: what the
+# implementation provides (`cfg(interface = ...)') is not known yet at this point.
+[target.'cfg(any(os = "linux", os = "macos", os = "windows", os = "freebsd", os = "uefi", os = "openkal"))'.dependencies]
 openkal-musl = { version = "^0.29.0", default-features = false, features = ["posix", "malloc-mimalloc"] }
 
-[target.'cfg(any(os = "none", os = "dos"))'.dependencies]
+[target.'cfg(not(any(os = "linux", os = "macos", os = "windows", os = "freebsd", os = "uefi", os = "openkal")))'.dependencies]
 openkal-musl = { version = "^0.29.0", default-features = false, features = ["posix", "malloc-mallocng"] }
 
 [build]
@@ -500,7 +510,13 @@ sources = [
 # binds the image's `kal_*' imports, which this package never names. DOS (0.20.3, openkal-dos;
 # technical experiment only) takes it too: an ELF executable with its headers in its first
 # segment, which the stub loads.
-[target.'cfg(any(os = "linux", os = "openkal", os = "dos"))'.build]
+#
+# THE SELECTION IS THE ELF ROWS', NOT A LIST OF SYSTEMS (0.20.4). It named Linux, the ok image
+# and DOS, so a row a platform defines for another system was built with no builtins at all
+# (measured on an i386 row over an implementation this package does not know: `undefined
+# symbol: __divdi3', `__atomic_load'). The two systems named are the ones that state their
+# own selection below; a new ELF system takes this one and writes no line here.
+[target.'cfg(all(object-format = "elf", not(os = "freebsd"), not(os = "none")))'.build]
 sources = [
   "llvm/compiler-rt/lib/builtins/*.c",
   "!llvm/compiler-rt/lib/builtins/atomic_*.c",
@@ -589,7 +605,9 @@ sources = [
 # `__bf16' does not exist there, as compiler-rt's own build finds (COMPILER_RT_HAS_BFLOAT16); its
 # conversions stay out (measured: `__bf16 is not supported on this target', fp_trunc.h).
 # i686-linux-musl keeps the toolchain's processor, which has SSE2, and the conversions.
-[target.'cfg(any(os = "dos", all(os = "openkal", arch = "i686")))'.build]
+# The condition is the architecture's rows that state the 486 (0.20.4): every i386 row but
+# Linux's, which is the one that keeps the toolchain's processor.
+[target.'cfg(all(arch = "i686", not(os = "linux")))'.build]
 sources = ["!llvm/compiler-rt/lib/builtins/*bf2.c"]
 
 [target.'cfg(os = "openkal")'.build]
