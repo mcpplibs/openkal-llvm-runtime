@@ -429,13 +429,16 @@ Runtime 0.19.0 selects openkal-musl 0.28.0 and its matching OpenKal 0.24
 implementations. The C++ runtime surface and allocator feature selection
 remain unchanged.
 
-## The selections are by container and by statement, not by a list of systems (0.20.4)
+## A system this package does not know (0.20.4)
 
-Three selections named systems, so a row a platform defines for a system this package
-does not know took none of them: the builtins (it was built with none: `undefined symbol:
-__divdi3`), the 486's exclusion of the `__bf16` conversions, and the allocator of the C
-library beneath. They now read what the row states. The builtins are the ELF rows' that
-state no selection of their own; the 486's exclusion is every i386 row's but Linux's; and
-musl's own allocator is taken wherever the implementation states no `openkal.random`,
-which mimalloc seeds its heaps from. Every row served before selects what it selected:
-the only implementation without `openkal.random` was DOS's, which was named.
+Three selections named the systems they applied to, so a row a platform defines for a
+system this package does not know took none of them, or the wrong one: it was built with
+no builtins (`undefined symbol: __divdi3`), kept the `__bf16` conversions the 486 has no
+type for, and took mimalloc, which asks the implementation beneath it for more than such a
+system may have. Each now names the exception and leaves the rest to the general case. The
+builtins are the ELF rows' that state no selection of their own; the 486's exclusion is
+every i386 row's but Linux's; mimalloc is taken on the systems it was measured on, and
+musl's own allocator, which asks for blocks of memory and nothing else, everywhere else.
+Every row served before selects what it selected. The conditions are the row's own words
+(system, architecture, container): a dependency edge is selected before the graph is
+resolved, so what the implementation provides cannot decide it.

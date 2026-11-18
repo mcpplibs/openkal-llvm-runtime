@@ -234,15 +234,20 @@ cflags = ["-DDISABLE_AARCH64_FMV=1"]
 # technical experiment only) is the same: its DPMI memory is a machine's few megabytes, and
 # mimalloc's arenas are placed at 256 MiB. A target's edge replaces a general one, so each
 # states every feature.
-# A ROW WHOSE IMPLEMENTATION STATES NO RANDOM SOURCE TAKES musl's OWN TOO (0.20.4): mimalloc
-# seeds its heaps from one and says so where there is none (`unable to use secure
-# randomness'), and such an implementation is a small machine's or an old system's. The
-# implementation's own statement decides (`cfg(interface = ...)'), so a new system is not
-# added to a list here.
-[target.'cfg(not(any(os = "none", os = "dos", not(interface = "openkal.random"))))'.dependencies]
+# mimalloc IS TAKEN WHERE IT WAS MEASURED, AND musl's OWN EVERYWHERE ELSE (0.20.4). The
+# condition named the systems that take musl's own (`none', `dos'), so a row a platform
+# defines for a system this package does not know took mimalloc, which asks more of the
+# implementation beneath it than that system may have: a random source for its heaps
+# (`unable to use secure randomness'), arenas placed far apart, threads. musl's own asks for
+# blocks of `openkal.memory' and nothing else, so it is the allocator of a system nobody
+# measured, and a new system is not added to a list here. The systems named are the ones the
+# C library names an implementation for, less the two above. A dependency edge is selected
+# before the graph is resolved, so the condition is the row's own words: what the
+# implementation provides (`cfg(interface = ...)') is not known yet at this point.
+[target.'cfg(any(os = "linux", os = "macos", os = "windows", os = "freebsd", os = "uefi", os = "openkal"))'.dependencies]
 openkal-musl = { version = "^0.29.0", default-features = false, features = ["posix", "malloc-mimalloc"] }
 
-[target.'cfg(any(os = "none", os = "dos", not(interface = "openkal.random")))'.dependencies]
+[target.'cfg(not(any(os = "linux", os = "macos", os = "windows", os = "freebsd", os = "uefi", os = "openkal")))'.dependencies]
 openkal-musl = { version = "^0.29.0", default-features = false, features = ["posix", "malloc-mallocng"] }
 
 [build]
