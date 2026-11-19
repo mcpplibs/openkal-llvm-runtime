@@ -6,7 +6,7 @@ C library.
 
 ```toml
 [dependencies]
-openkal-llvm-runtime = "0.20.4"
+openkal-llvm-runtime = "0.21.0"
 ```
 
 > **Engine floor (mcpp 2026.11.2.1):** 0.17.0 is built over openkal-musl 0.26.0,
@@ -383,6 +383,13 @@ locally above the family's i386 branches: a C++23 program with `import std`, an
 exception, four `std::jthread`s, `std::format` of sixty-four bit values and a
 file stream ran, and the openkal conformance suite held every observation it
 made (407, none did not, the five not observed being x86_64's five).
+
+## OpenKal 0.26 dependency group
+
+Runtime 0.21.0 is built over openkal-musl `^0.30.0` and the OpenKal 0.26
+implementations beneath it (Linux 0.27, macOS 0.24, Windows 0.23, FreeBSD 0.2,
+UEFI 0.12, DOS 0.2, OpenSBI 0.10). The C++ runtime surface and the allocator
+selection are unchanged.
 
 ## OpenKal 0.25 dependency group
 
