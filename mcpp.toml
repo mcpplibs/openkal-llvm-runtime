@@ -1,7 +1,7 @@
 [package]
 namespace   = "mcpplibs"
 name        = "openkal-llvm-runtime"
-version     = "0.20.4"
+version     = "0.21.0"
 description = "LLVM's C++ runtime libraries — libc++, libc++abi and libunwind — configured for openkal-musl rather than for a host C library."
 license     = "Apache-2.0"
 authors     = ["mcpplibs"]
@@ -245,10 +245,10 @@ cflags = ["-DDISABLE_AARCH64_FMV=1"]
 # before the graph is resolved, so the condition is the row's own words: what the
 # implementation provides (`cfg(interface = ...)') is not known yet at this point.
 [target.'cfg(any(os = "linux", os = "macos", os = "windows", os = "freebsd", os = "uefi", os = "openkal"))'.dependencies]
-openkal-musl = { version = "^0.29.0", default-features = false, features = ["posix", "malloc-mimalloc"] }
+openkal-musl = { version = "^0.30.0", default-features = false, features = ["posix", "malloc-mimalloc"] }
 
 [target.'cfg(not(any(os = "linux", os = "macos", os = "windows", os = "freebsd", os = "uefi", os = "openkal")))'.dependencies]
-openkal-musl = { version = "^0.29.0", default-features = false, features = ["posix", "malloc-mallocng"] }
+openkal-musl = { version = "^0.30.0", default-features = false, features = ["posix", "malloc-mallocng"] }
 
 [build]
 
